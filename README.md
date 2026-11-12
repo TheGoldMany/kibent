@@ -24,11 +24,24 @@ Ingyenes, multi-tenant csapatnaptár KKV-knak és startupoknak: ki van bent az i
    - Engedélyezd az *Email & Password* és a *Magic link* belépést.
    - A *Trusted domains / Redirect URLs* közé vedd fel: `http://localhost:3000` és az éles domained.
 3. Másold ki a **Base URL**-t (`NEON_AUTH_BASE_URL`) és a **pooled** connection stringet (`DATABASE_URL`).
-4. Futtasd a migrációt (`psql` kell hozzá):
+4. Futtasd a migrációt: vagy a Neon **SQL Editorban** (másold be a `db/migrations/0001_init.sql` tartalmát), vagy `psql`-lel:
 
 ```bash
 DATABASE_URL='postgresql://neondb_owner:…@…-pooler…neon.tech/neondb?sslmode=require' npm run db:migrate
 ```
+
+Ha a `neondb_owner` nem hozhat létre triggert a Neon Auth `neon_auth."user"` tábláján, a migráció egy `WARNING`-gal továbbmegy. Ez nem hiba: a profilt ilyenkor az alkalmazás hozza létre az első belépéskor (`public.ensure_profile`).
+
+Ellenőrzés a migráció után (várt eredmény: `5 | 16 | 0 vagy 1 | 1`):
+
+```sql
+select (select count(*) from information_schema.tables where table_schema = 'public') as tablak,
+       (select count(*) from pg_policies where schemaname = 'public') as rls_szabalyok,
+       (select count(*) from pg_trigger where tgname = 'on_auth_user_created') as auth_trigger,
+       (select count(*) from pg_roles where rolname = 'kibent_app') as app_szerepkor;
+```
+
+Ha egy korábbi futtatás félbeszakadt (`relation "companies" already exists`), előbb futtasd a `db/reset_partial.sql`-t. Ez csak üres táblák esetén töröl, a felhasználókhoz nem nyúl. Utána futtasd újra a migrációt.
 
 ### 2. Vercel Blob (privát)
 

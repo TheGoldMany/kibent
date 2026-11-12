@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getAuth } from "@/lib/auth/server";
-import { getSessionUserId, safeNext } from "@/lib/auth";
+import { getSessionContext, safeNext } from "@/lib/auth";
 import { dbErrorMessage, withUser } from "@/lib/db";
 import { siteUrl } from "@/lib/utils";
 import {
@@ -81,8 +81,10 @@ export async function createCompanyAction(_prev: FormState, formData: FormData):
   const parsed = companyNameSchema.safeParse({ name: formData.get("name") });
   if (!parsed.success) return { error: firstError(parsed.error) };
 
-  const userId = await getSessionUserId();
-  if (!userId) redirect("/login");
+  // getSessionContext biztosítja a profilt (trigger nélküli Neon környezetben is).
+  const ctx = await getSessionContext();
+  if (!ctx) redirect("/login");
+  const userId = ctx.userId;
   try {
     await withUser(userId, (tx) => tx.query("select public.create_company($1)", [parsed.data.name]));
   } catch (error) {
@@ -97,8 +99,10 @@ export async function joinCompanyAction(_prev: FormState, formData: FormData): P
   const parsed = inviteCodeSchema.safeParse({ code: formData.get("code") });
   if (!parsed.success) return { error: firstError(parsed.error) };
 
-  const userId = await getSessionUserId();
-  if (!userId) redirect("/login");
+  // getSessionContext biztosítja a profilt (trigger nélküli Neon környezetben is).
+  const ctx = await getSessionContext();
+  if (!ctx) redirect("/login");
+  const userId = ctx.userId;
   try {
     await withUser(userId, (tx) => tx.query("select public.join_company($1)", [parsed.data.code]));
   } catch (error) {

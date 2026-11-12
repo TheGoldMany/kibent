@@ -11,26 +11,38 @@ export type SessionContext = {
   company: Company | null;
 };
 
-/** A bejelentkezett Neon Auth felhasználó azonosítója (vagy null). */
-export const getSessionUserId = cache(async (): Promise<string | null> => {
+type SessionUser = { id: string; email: string; name: string };
+
+/** A bejelentkezett Neon Auth felhasználó (vagy null). */
+const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const { data } = await getAuth().getSession();
-  return data?.user?.id ?? null;
+  const user = data?.user;
+  if (!user?.id) return null;
+  return { id: user.id, email: user.email ?? "", name: user.name ?? "" };
 });
+
+/** A bejelentkezett Neon Auth felhasználó azonosítója (vagy null). */
+export const getSessionUserId = cache(async (): Promise<string | null> => (await getSessionUser())?.id ?? null);
+
+const PROFILE_SQL = `select id, company_id, email, full_name, avatar_url, role, ical_token, created_at
+                       from profiles where id = $1`;
 
 /** Kérésenként egyszer lekérdezett session + profil + cég. */
 export const getSessionContext = cache(async (): Promise<SessionContext | null> => {
-  const userId = await getSessionUserId();
-  if (!userId) return null;
+  const user = await getSessionUser();
+  if (!user) return null;
+  const userId = user.id;
 
   return withUser(userId, async (tx) => {
-    const profile = await tx.one<Profile>(
-      `select id, company_id, email, full_name, avatar_url, role, ical_token, created_at::text
-         from profiles where id = $1`,
-      [userId],
-    );
+    let profile = await tx.one<Profile>(PROFILE_SQL, [userId]);
+    if (!profile) {
+      // Első belépés olyan környezetben, ahol a neon_auth trigger nem fut.
+      await tx.query("select public.ensure_profile($1, $2)", [user.email, user.name]);
+      profile = await tx.one<Profile>(PROFILE_SQL, [userId]);
+    }
     if (!profile) return null;
     const company = profile.company_id
-      ? await tx.one<Company>(`select id, name, invite_code, created_at::text from companies where id = $1`, [
+      ? await tx.one<Company>(`select id, name, invite_code, created_at from companies where id = $1`, [
           profile.company_id,
         ])
       : null;

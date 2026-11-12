@@ -4,6 +4,8 @@
  * Vercel Blobot helyettesítjük; minden más (SQL, RLS, triggerek) éles kód.
  *
  * Futtatás: bash db/tests/run-integration.sh
+ * (Neon-szerű jogosultságokkal: TEST_DATABASE_URL = korlátozott tulajdonos,
+ *  TEST_SETUP_DATABASE_URL = superuser a neon_auth tesztadatokhoz.)
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { Pool } from "pg";
@@ -22,7 +24,9 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/lib/auth/server", () => ({
   getAuth: () => ({
-    getSession: async () => ({ data: session.userId ? { user: { id: session.userId } } : null }),
+    getSession: async () => ({
+      data: session.userId ? { user: { id: session.userId, email: `${session.userId.slice(-2)}@test.hu`, name: "Teszt Elek" } } : null,
+    }),
     updateUser: async () => ({}),
   }),
 }));
@@ -55,12 +59,28 @@ run("integráció (helyi Postgres)", () => {
   beforeAll(async () => {
     process.env.DATABASE_URL = DB;
     process.env.NEXT_PUBLIC_SITE_URL = "https://kibent.test";
-    pool = new Pool({ connectionString: DB });
+    // A tesztadatok beszúrásához (neon_auth."user") külön, magasabb jogú kapcsolat is megadható.
+    pool = new Pool({ connectionString: process.env.TEST_SETUP_DATABASE_URL ?? DB });
     await pool.query(
       `insert into neon_auth."user" (id, email, name) values
         ($1, 'anna@acme.hu', 'Kovács Anna'), ($2, 'bela@acme.hu', 'Nagy Béla'), ($3, 'dani@acme.hu', 'Tóth Dani')`,
       [ANNA, BELA, DANI],
     );
+  });
+
+  it("profil trigger nélkül: az első belépés létrehozza (ensure_profile)", async () => {
+    const ERIK = "00000000-0000-0000-0000-0000000000e1";
+    const hasTrigger = (await pool.query("select 1 from pg_trigger where tgname = 'on_auth_user_created'")).rowCount;
+    if (hasTrigger) await pool.query('alter table neon_auth."user" disable trigger on_auth_user_created');
+    await pool.query(`insert into neon_auth."user" (id, email, name) values ($1, 'e1@test.hu', 'Erik')`, [ERIK]);
+    if (hasTrigger) await pool.query('alter table neon_auth."user" enable trigger on_auth_user_created');
+    expect((await pool.query("select 1 from profiles where id = $1", [ERIK])).rowCount).toBe(0);
+
+    const { getSessionContext } = await import("@/lib/auth");
+    as(ERIK);
+    const ctx = await getSessionContext();
+    expect(ctx?.profile).toMatchObject({ id: ERIK, full_name: "Teszt Elek", role: "member", company_id: null });
+    expect(ctx?.company).toBeNull();
   });
 
   it("onboarding: cég létrehozása és csatlakozás meghívóval", async () => {
@@ -224,10 +244,11 @@ run("integráció (helyi Postgres)", () => {
     expect(own.headers.get("content-type")).toContain("text/calendar");
     const ownBody = await own.text();
     expect(ownBody).toContain("X-WR-CALNAME:Kibent – Acme Zrt.");
-    expect(ownBody).not.toContain("Tóth Dani");
+    expect(ownBody).not.toMatch(/🏢 .+ – Iroda/);
 
     const team = await (await call(rows[0].ical_token, "?team=1")).text();
-    expect(team).toContain("Tóth Dani – Iroda");
+    // A név a profilból jön (triggeres környezetben „Tóth Dani”, trigger nélkül a session neve).
+    expect(team).toMatch(/SUMMARY:\[Kibent\] 🏢 .+ – Iroda/);
 
     expect((await call("00000000-0000-0000-0000-000000000000")).status).toBe(404);
     expect((await call("nem-uuid")).status).toBe(404);

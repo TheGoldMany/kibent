@@ -192,9 +192,19 @@ begin
 end;
 $$;
 
-create trigger on_auth_user_created
-  after insert on neon_auth."user"
-  for each row execute function public.handle_new_user();
+-- A neon_auth sémát a Neon Auth kezeli; ha a tulajdonos szerepkör nem hozhat
+-- létre rajta triggert, a migráció figyelmeztetéssel továbbmegy – a profilt
+-- ilyenkor az alkalmazás hozza létre az első belépéskor (public.ensure_profile).
+do $do$
+begin
+  drop trigger if exists on_auth_user_created on neon_auth."user";
+  create trigger on_auth_user_created
+    after insert on neon_auth."user"
+    for each row execute function public.handle_new_user();
+exception when insufficient_privilege or undefined_table then
+  raise warning 'on_auth_user_created trigger kihagyva (%): a profil az első belépéskor jön létre.', sqlerrm;
+end
+$do$;
 
 -- 3.2 Email szinkron, ha a felhasználó emailje változik
 create or replace function public.handle_user_email_change()
@@ -211,17 +221,59 @@ begin
 end;
 $$;
 
-create trigger on_auth_user_email_changed
-  after update of email on neon_auth."user"
-  for each row execute function public.handle_user_email_change();
+do $do$
+begin
+  drop trigger if exists on_auth_user_email_changed on neon_auth."user";
+  create trigger on_auth_user_email_changed
+    after update of email on neon_auth."user"
+    for each row execute function public.handle_user_email_change();
+exception when insufficient_privilege or undefined_table then
+  raise warning 'on_auth_user_email_changed trigger kihagyva (%).', sqlerrm;
+end
+$do$;
 
 -- Már létező Neon Auth felhasználók profiljai (ha a migráció később fut)
-insert into public.profiles (id, email, full_name, avatar_url)
-select u.id, coalesce(u.email, ''),
-       coalesce(nullif(trim(u.name), ''), nullif(split_part(coalesce(u.email, ''), '@', 1), ''), 'Felhasználó'),
-       u.image
-  from neon_auth."user" u
-on conflict (id) do nothing;
+do $do$
+begin
+  insert into public.profiles (id, email, full_name, avatar_url)
+  select u.id, coalesce(u.email, ''),
+         coalesce(nullif(trim(u.name), ''), nullif(split_part(coalesce(u.email, ''), '@', 1), ''), 'Felhasználó'),
+         u.image
+    from neon_auth."user" u
+  on conflict (id) do nothing;
+exception when insufficient_privilege then
+  raise warning 'Meglévő felhasználók átvétele kihagyva (%).', sqlerrm;
+end
+$do$;
+
+-- 3.2b Profil biztosítása az első belépéskor (trigger nélküli környezetben is).
+-- Csak a hívó saját (app.uid()) profilját hozhatja létre; a szerepkör és a cég
+-- mindig az alapértelmezett (member, cég nélkül).
+create or replace function public.ensure_profile(p_email text, p_full_name text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  uid uuid := app.uid();
+begin
+  if uid is null then
+    raise exception 'Bejelentkezés szükséges.' using errcode = '42501';
+  end if;
+  insert into public.profiles (id, email, full_name)
+  values (
+    uid,
+    coalesce(p_email, ''),
+    coalesce(
+      nullif(trim(left(p_full_name, 120)), ''),
+      nullif(split_part(coalesce(p_email, ''), '@', 1), ''),
+      'Felhasználó'
+    )
+  )
+  on conflict (id) do nothing;
+end;
+$$;
 
 -- 3.3 schedules védelem: mezők immutabilitása, jóváhagyási szabályok
 create or replace function public.schedules_guard()
@@ -351,6 +403,9 @@ begin
   update public.profiles
      set company_id = new_company_id, role = 'admin'
    where id = uid;
+  if not found then
+    raise exception 'A profilod még nem jött létre. Frissítsd az oldalt, és próbáld újra.' using errcode = 'P0002';
+  end if;
 
   return new_company_id;
 end;
@@ -392,6 +447,9 @@ begin
   update public.profiles
      set company_id = target_company, role = 'member'
    where id = uid;
+  if not found then
+    raise exception 'A profilod még nem jött létre. Frissítsd az oldalt, és próbáld újra.' using errcode = 'P0002';
+  end if;
 
   return target_company;
 end;
@@ -525,6 +583,7 @@ $$;
 
 -- RPC jogosultságok
 revoke all on all functions in schema public from public;
+grant execute on function public.ensure_profile(text, text) to kibent_app;
 grant execute on function public.create_company(text) to kibent_app;
 grant execute on function public.join_company(text) to kibent_app;
 grant execute on function public.preview_invite(text) to kibent_app;
