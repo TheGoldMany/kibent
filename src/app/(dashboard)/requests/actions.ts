@@ -119,7 +119,7 @@ export async function createLeaveRequestAction(_prev: FormState, formData: FormD
 
   const base =
     type === "sick"
-      ? `Betegszabadság rögzítve (${days.length} munkanap). Jobbulást! 🍵`
+      ? `Betegszabadság rögzítve (${days.length} munkanap). Jobbulást!`
       : approval === "pending"
         ? `Szabadságkérelem elküldve (${days.length} munkanap). Az adminisztrátor hamarosan elbírálja.`
         : `Szabadság rögzítve (${days.length} munkanap).`;

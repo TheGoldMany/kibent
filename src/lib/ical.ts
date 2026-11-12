@@ -58,7 +58,7 @@ export function buildFeed(opts: {
         items.push({
           date: day.date,
           key: `team-${userId}`,
-          title: `[Kibent] 🏢 ${names.get(userId) ?? "Kolléga"} – Iroda`,
+          title: `[Kibent] ${names.get(userId) ?? "Kolléga"} – Iroda`,
         });
       }
     }

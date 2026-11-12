@@ -28,7 +28,7 @@ export function ApprovalQueue({ groups, names }: { groups: LeaveRequestGroup[]; 
     return (
       <div className="flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-ink bg-white p-8 text-center">
         <CheckCircle2 className="h-8 w-8" />
-        <p>Nincs jóváhagyásra váró kérelem. Szép munka! 🎉</p>
+        <p>Nincs jóváhagyásra váró kérelem.</p>
       </div>
     );
   }

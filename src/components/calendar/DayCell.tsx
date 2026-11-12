@@ -2,6 +2,7 @@
 
 import { RotateCcw } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { StatusIcon } from "@/components/calendar/StatusIcon";
 import { STATUS_META } from "@/lib/status";
 import { formatHu } from "@/lib/dates";
 import type { ResolvedDay } from "@/lib/schedule-resolver";
@@ -51,7 +52,7 @@ export function DayCell({
     >
       {day.display !== "none" ? (
         <>
-          <span aria-hidden>{meta.emoji}</span>
+          <StatusIcon status={day.display} className={compact ? "h-4 w-4" : "h-[18px] w-[18px]"} />
           {!compact && <span className="hidden truncate sm:inline">{meta.short}</span>}
         </>
       ) : (
@@ -93,8 +94,8 @@ export function DayCell({
         <TooltipContent side="top">
           <p className="font-medium">{personName}</p>
           <p className="text-xs text-muted-foreground">{formatHu(day.date, "yyyy. MMMM d., EEEE")}</p>
-          <p className="mt-1">
-            {meta.emoji} {meta.label}
+          <p className="mt-1 flex items-center gap-1.5 font-semibold">
+            <StatusIcon status={day.display} /> {meta.label}
           </p>
           {sourceText && <p className="text-xs text-muted-foreground">{sourceText}</p>}
           {showNote && day.note && <p className="mt-1 text-xs italic">„{day.note}”</p>}

@@ -14,16 +14,31 @@ types.setTypeParser(1184, (v) => v); // timestamptz
  */
 const globalForPool = globalThis as unknown as { kibentPool?: Pool };
 
+/**
+ * A connection string sslmode/channel_binding paraméterei felülírnák a lenti
+ * explicit `ssl` beállítást (és a pg elavulási figyelmeztetést ír ki), ezért kivesszük őket.
+ */
+function withoutSslParams(connectionString: string): string {
+  try {
+    const url = new URL(connectionString);
+    for (const key of ["sslmode", "channel_binding", "sslrootcert", "uselibpqcompat"]) url.searchParams.delete(key);
+    return url.toString();
+  } catch {
+    return connectionString;
+  }
+}
+
 function getPool(): Pool {
   if (!globalForPool.kibentPool) {
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) throw new Error("Hiányzó környezeti változó: DATABASE_URL. Lásd: .env.example");
+    const raw = process.env.DATABASE_URL;
+    if (!raw) throw new Error("Hiányzó környezeti változó: DATABASE_URL. Lásd: .env.example");
+    const isLocal = /localhost|127\.0\.0\.1/.test(raw);
     globalForPool.kibentPool = new Pool({
-      connectionString,
+      connectionString: isLocal ? raw : withoutSslParams(raw),
       max: 5,
       idleTimeoutMillis: 10_000,
-      // Neon TLS-t követel meg; a helyi Postgres teszthez nem kell.
-      ssl: /localhost|127\.0\.0\.1/.test(connectionString) ? undefined : { rejectUnauthorized: true },
+      // Neon TLS-t követel meg: teljes tanúsítvány-ellenőrzés (verify-full). Helyi teszthez nem kell.
+      ssl: isLocal ? undefined : { rejectUnauthorized: true },
     });
   }
   return globalForPool.kibentPool;

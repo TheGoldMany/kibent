@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useOptimistic, useState, useTransition } from "react";
-import { AlertCircle, Users, X } from "lucide-react";
+import { AlertCircle, Building2, Users, X } from "lucide-react";
 import { setDayStatusAction } from "@/app/(dashboard)/actions";
 import { DayCell } from "@/components/calendar/DayCell";
 import { buildMatrix, countOffice, nextToggleStatus, type PatternDays, type ScheduleLike } from "@/lib/schedule-resolver";
@@ -136,12 +136,13 @@ export function TeamMatrix({
                     {!weekend && (
                       <div
                         className={cn(
-                          "mt-1 whitespace-nowrap text-[11px]",
+                          "mt-1 flex items-center justify-center gap-1 whitespace-nowrap text-[11px]",
                           office > 0 ? "font-semibold text-blue-800" : "text-muted-foreground",
                         )}
                         title={`${office} fő az irodában a ${total} főből`}
                       >
-                        {compact ? office : `🏢 ${office}/${total} fő`}
+                        <Building2 aria-hidden strokeWidth={2.25} className="h-3 w-3 shrink-0" />
+                        {compact ? office : `${office}/${total} fő`}
                       </div>
                     )}
                   </th>

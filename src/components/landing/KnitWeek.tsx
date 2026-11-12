@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Building2 } from "lucide-react";
+import { StatusIcon } from "@/components/calendar/StatusIcon";
 import { STATUS_META, type DisplayStatus } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
@@ -52,8 +54,9 @@ export function KnitWeek({ className }: { className?: string }) {
                 return (
                   <th key={d} scope="col" className="pb-1 text-center font-normal">
                     <span className="block font-semibold">{d}</span>
-                    <span className="block whitespace-nowrap text-xs tabular-nums text-blue-800" aria-label={`${inOffice} fő az irodában`}>
-                      🏢 {inOffice}/{rows.length}
+                    <span className="flex items-center justify-center gap-1 whitespace-nowrap text-xs tabular-nums text-blue-800" aria-label={`${inOffice} fő az irodában`}>
+                      <Building2 aria-hidden strokeWidth={2.25} className="h-3 w-3" />
+                      {inOffice}/{rows.length}
                     </span>
                   </th>
                 );
@@ -76,13 +79,13 @@ export function KnitWeek({ className }: { className?: string }) {
                   const cell = (
                     <span
                       className={cn(
-                        "knit flex h-11 min-w-[3.25rem] items-center justify-center rounded-lg border-2 text-lg animate-knit-in",
+                        "knit flex h-11 min-w-[3.25rem] items-center justify-center rounded-lg border-2 animate-knit-in",
                         meta.className,
                       )}
                       style={{ animationDelay: `${(r * 5 + d) * 40}ms` }}
                       aria-hidden
                     >
-                      {meta.emoji}
+                      <StatusIcon status={status} className="h-5 w-5" />
                     </span>
                   );
                   return (

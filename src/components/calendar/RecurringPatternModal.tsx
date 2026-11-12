@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Repeat } from "lucide-react";
+import { Building2, House, Repeat } from "lucide-react";
 import { saveRecurringPatternAction } from "@/app/(dashboard)/actions";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import {
@@ -27,9 +27,9 @@ const DAYS: { key: keyof PatternDays; label: string }[] = [
 ];
 
 const OPTIONS = [
-  { value: "office", label: "Iroda", className: STATUS_META.office.className, emoji: "🏢" },
-  { value: "remote", label: "Home Office", className: STATUS_META.remote.className, emoji: "🏠" },
-  { value: "", label: "Nincs", className: "bg-lilac-soft text-ink", emoji: "" },
+  { value: "office", label: "Iroda", className: STATUS_META.office.className, icon: Building2 },
+  { value: "remote", label: "Home Office", className: STATUS_META.remote.className, icon: House },
+  { value: "", label: "Nincs", className: "bg-lilac-soft text-ink", icon: null },
 ] as const;
 
 const EMPTY: PatternDays = { mon: null, tue: null, wed: null, thu: null, fri: null };
@@ -85,7 +85,7 @@ export function RecurringPatternForm({ initial, onSaved }: { initial: PatternDay
                       onChange={() => setValues((v) => ({ ...v, [key]: opt.value || null }))}
                       className="sr-only"
                     />
-                    {opt.emoji && <span aria-hidden>{opt.emoji}</span>}
+                    {opt.icon && <opt.icon aria-hidden strokeWidth={2.25} className="h-3.5 w-3.5 shrink-0" />}
                     {opt.label}
                   </label>
                 );

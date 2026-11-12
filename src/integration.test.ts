@@ -244,11 +244,11 @@ run("integráció (helyi Postgres)", () => {
     expect(own.headers.get("content-type")).toContain("text/calendar");
     const ownBody = await own.text();
     expect(ownBody).toContain("X-WR-CALNAME:Kibent – Acme Zrt.");
-    expect(ownBody).not.toMatch(/🏢 .+ – Iroda/);
+    expect(ownBody).not.toMatch(/SUMMARY:\[Kibent\] .+ – Iroda/);
 
     const team = await (await call(rows[0].ical_token, "?team=1")).text();
     // A név a profilból jön (triggeres környezetben „Tóth Dani”, trigger nélkül a session neve).
-    expect(team).toMatch(/SUMMARY:\[Kibent\] 🏢 .+ – Iroda/);
+    expect(team).toMatch(/SUMMARY:\[Kibent\] .+ – Iroda/);
 
     expect((await call("00000000-0000-0000-0000-000000000000")).status).toBe(404);
     expect((await call("nem-uuid")).status).toBe(404);
