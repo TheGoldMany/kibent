@@ -103,7 +103,7 @@ export function TeamMatrix({
             <tr>
               <th
                 scope="col"
-                className="sticky left-0 z-20 min-w-[9.5rem] border-b border-r bg-card px-3 py-2 text-left text-xs font-medium text-muted-foreground sm:min-w-[12rem]"
+                className="sticky left-0 z-20 min-w-[7rem] border-b border-r bg-card px-2 py-2 text-left text-xs font-medium text-muted-foreground sm:min-w-[12rem] sm:px-3"
               >
                 Kolléga
               </th>
@@ -123,7 +123,7 @@ export function TeamMatrix({
                     )}
                   >
                     <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                      {formatHu(day, compact ? "EEEEE" : "EEE")}
+                      {formatHu(day, compact ? "EEEEEE" : "EEE")}
                     </div>
                     <div
                       className={cn(
@@ -158,14 +158,14 @@ export function TeamMatrix({
                   <th
                     scope="row"
                     className={cn(
-                      "sticky left-0 z-10 border-b border-r bg-card px-3 py-1 text-left font-normal",
+                      "sticky left-0 z-10 border-b border-r bg-card px-2 py-1 text-left font-normal sm:px-3",
                       isOwn && "bg-indigo-50",
                     )}
                   >
                     <div className="flex items-center gap-2">
                       <span
                         className={cn(
-                          "grid h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] font-semibold",
+                          "hidden h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] font-semibold sm:grid",
                           isOwn ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
                         )}
                         aria-hidden
@@ -173,7 +173,7 @@ export function TeamMatrix({
                         {initials(member.full_name)}
                       </span>
                       <span className="min-w-0">
-                        <span className="block max-w-[7rem] truncate font-medium sm:max-w-[9rem]">{member.full_name}</span>
+                        <span className="block max-w-[6.5rem] truncate font-medium sm:max-w-[9rem]">{member.full_name}</span>
                         {(isOwn || member.role === "admin") && (
                           <span className="block text-[11px] text-muted-foreground">
                             {isOwn ? "Te" : ""}

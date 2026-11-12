@@ -149,3 +149,56 @@ describe("groupRequests", () => {
     expect(g1).toMatchObject({ startDate: "2026-11-16", endDate: "2026-11-18", dayCount: 2, approval: "pending" });
   });
 });
+
+import { buildFeed, feedRange, mergeConsecutive } from "./ical";
+
+describe("iCal feed", () => {
+  it("időszak: előző hónap elejétől +3. hónap végéig", () => {
+    const r = feedRange("2026-11-12");
+    expect(r.start).toBe("2026-10-01");
+    expect(r.end).toBe("2027-02-28");
+  });
+
+  it("egymást követő azonos napokat összefűz", () => {
+    const ev = mergeConsecutive([
+      { date: "2026-11-17", key: "own", title: "A" },
+      { date: "2026-11-16", key: "own", title: "A" },
+      { date: "2026-11-18", key: "own", title: "B" },
+      { date: "2026-11-20", key: "own", title: "B" },
+    ]);
+    expect(ev.map((e) => [e.title, e.start, e.end])).toEqual([
+      ["A", "2026-11-16", "2026-11-17"],
+      ["B", "2026-11-18", "2026-11-18"],
+      ["B", "2026-11-20", "2026-11-20"],
+    ]);
+  });
+
+  it("saját beosztás + csapat irodai napjai, elutasított nélkül", () => {
+    const ics = buildFeed({
+      calendarName: "Kibent – Teszt",
+      ownerId: "me",
+      members: [
+        { id: "me", full_name: "Én" },
+        { id: "bob", full_name: "Nagy Bob" },
+      ],
+      includeTeam: true,
+      days: ["2026-11-16", "2026-11-17", "2026-11-18"],
+      schedules: [
+        { user_id: "me", date: "2026-11-17", status: "vacation", approval_status: "approved", request_group_id: "g", note: null },
+        { user_id: "me", date: "2026-11-18", status: "vacation", approval_status: "rejected", request_group_id: "g2", note: null },
+      ],
+      patterns: [
+        { user_id: "me", mon: "office", tue: "office", wed: "remote", thu: null, fri: null },
+        { user_id: "bob", mon: "office", tue: "remote", wed: null, thu: null, fri: null },
+      ],
+      siteUrl: "https://kibent.example",
+    });
+    expect(ics).toContain("SUMMARY:[Kibent] Iroda");
+    expect(ics).toContain("SUMMARY:[Kibent] Szabadság");
+    expect(ics).toContain("SUMMARY:[Kibent] Home Office"); // elutasított -> rutin
+    expect(ics).toContain("Nagy Bob – Iroda");
+    expect(ics).toContain("DTSTART;VALUE=DATE:20261117");
+    expect(ics).toContain("DTEND;VALUE=DATE:20261118");
+    expect(ics.match(/BEGIN:VEVENT/g)).toHaveLength(4);
+  });
+});

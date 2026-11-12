@@ -44,7 +44,7 @@ export function CalendarToolbar({
           </Link>
         </Button>
       </div>
-      <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">{rangeTitle(view, start, end)}</h2>
+      <h2 className="order-first min-w-0 basis-full truncate text-lg font-semibold sm:order-none sm:flex-1 sm:basis-auto">{rangeTitle(view, start, end)}</h2>
       <div className="flex rounded-lg bg-muted p-1 text-sm" role="group" aria-label="Nézet">
         {VIEW_MODES.map((v) => (
           <Link

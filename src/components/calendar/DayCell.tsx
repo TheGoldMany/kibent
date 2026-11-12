@@ -44,7 +44,7 @@ export function DayCell({
       className={cn(
         "flex h-10 w-full items-center justify-center gap-1 rounded-md border text-xs font-medium",
         meta.className,
-        day.source === "pattern" && "border-opacity-60 opacity-90",
+        day.source === "pattern" && "opacity-75",
         day.display === "none" && isWeekend && "border-transparent",
       )}
     >
