@@ -27,7 +27,7 @@ export function UserMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="grid h-9 w-9 place-items-center rounded-full bg-primary/10 text-sm font-semibold text-primary outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="press grid h-10 w-10 place-items-center rounded-full border-2 border-ink bg-lilac text-sm font-bold shadow-brutal-xs outline-none"
         aria-label="Felhasználói menü"
       >
         {initials(fullName)}
@@ -36,9 +36,10 @@ export function UserMenu({
         <DropdownMenuLabel className="space-y-0.5">
           <p className="truncate">{fullName}</p>
           <p className="truncate text-xs font-normal text-muted-foreground">{email}</p>
-          <p className="flex items-center gap-1 pt-1 text-xs font-normal text-muted-foreground">
-            {isAdmin && <ShieldCheck className="h-3.5 w-3.5 text-primary" />}
-            {companyName} · {isAdmin ? "Adminisztrátor" : "Tag"}
+          <p className="truncate pt-2 font-display text-base italic">{companyName}</p>
+          <p className="flex items-center gap-1 text-xs font-normal">
+            {isAdmin && <ShieldCheck className="h-3.5 w-3.5" />}
+            {isAdmin ? "Adminisztrátor" : "Tag"}
           </p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />

@@ -8,8 +8,8 @@ export function FormMessage({ state, className }: { state: FormState; className?
     <p
       role={state.error ? "alert" : "status"}
       className={cn(
-        "rounded-md border px-3 py-2 text-sm",
-        state.error ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800",
+        "rounded-lg border-2 border-ink px-3.5 py-2.5 text-sm font-medium",
+        state.error ? "bg-bubblegum/60 text-ink" : "bg-emerald-100 text-ink",
         className,
       )}
     >

@@ -4,33 +4,97 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+    /* Cotton háttér, tinta előtér */
+    --background: 266 100% 99%;
+    --foreground: 0 0% 0%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 0 0% 0%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 243 75% 59%;
+    --popover-foreground: 0 0% 0%;
+    --primary: 0 0% 0%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
-    --accent: 220 14% 96%;
-    --accent-foreground: 222 47% 11%;
-    --destructive: 0 72% 51%;
+    --secondary: 262 100% 96%;
+    --secondary-foreground: 0 0% 0%;
+    --muted: 262 60% 96%;
+    --muted-foreground: 260 8% 38%;
+    --accent: 47 100% 87%;
+    --accent-foreground: 0 0% 0%;
+    --destructive: 348 83% 47%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 243 75% 59%;
-    --radius: 0.5rem;
+    /* Finom belső elválasztók (a szerkezeti keretek explicit border-ink) */
+    --border: 262 30% 86%;
+    --input: 0 0% 0%;
+    --ring: 0 0% 0%;
+    --radius: 0.875rem;
   }
 
   * {
     @apply border-border;
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background font-sans text-foreground antialiased;
+    font-feature-settings: "ss01", "kern";
+  }
+
+  h1, h2, h3 {
+    text-wrap: balance;
+  }
+
+  ::selection {
+    background: #ffe27a;
+    color: #000;
+  }
+
+  :focus-visible {
+    outline: 3px solid #000;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Tapintható, „benyomható” elem: a kemény árnyékba süllyed kattintáskor. */
+  .press {
+    @apply transition-[transform,box-shadow] duration-100 ease-out;
+  }
+  .press:hover {
+    transform: translate(-1px, -1px);
+  }
+  .press:active {
+    transform: translate(3px, 3px);
+    box-shadow: 0 0 0 0 #000;
+  }
+
+  /* Kötött (kasmír) textúra a státusz-cellákon: két irányú finom V-minta */
+  .knit {
+    background-image:
+      repeating-linear-gradient(60deg, rgb(0 0 0 / 0.05) 0 1.5px, transparent 1.5px 6px),
+      repeating-linear-gradient(-60deg, rgb(0 0 0 / 0.05) 0 1.5px, transparent 1.5px 6px);
+  }
+
+  /* Bodoni címek optikai mérethez igazítva */
+  .font-display {
+    font-optical-sizing: auto;
+    letter-spacing: -0.02em;
+  }
+
+  /* Archivo kiszélesített vágás gombokhoz és címkékhez */
+  .font-wide {
+    font-stretch: 118%;
+    letter-spacing: 0.005em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
   }
 }

@@ -78,7 +78,7 @@ export function TeamMatrix({
 
   if (members.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed p-10 text-center text-muted-foreground">
+      <div className="flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-ink bg-white p-10 text-center">
         <Users className="h-8 w-8" />
         <p>Még nincs senki a csapatban.</p>
       </div>
@@ -86,9 +86,9 @@ export function TeamMatrix({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {error && (
-        <div role="alert" className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <div role="alert" className="flex items-start gap-2 rounded-xl border-2 border-ink bg-bubblegum px-3.5 py-2.5 text-sm font-medium shadow-brutal-xs">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span className="flex-1">{error}</span>
           <button type="button" onClick={() => setError(null)} aria-label="Bezárás">
@@ -97,13 +97,13 @@ export function TeamMatrix({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border bg-card">
+      <div className="overflow-x-auto rounded-2xl border-2 border-ink bg-white shadow-brutal">
         <table className="w-full border-separate border-spacing-0 text-sm">
           <thead>
             <tr>
               <th
                 scope="col"
-                className="sticky left-0 z-20 min-w-[7rem] border-b border-r bg-card px-2 py-2 text-left text-xs font-medium text-muted-foreground sm:min-w-[12rem] sm:px-3"
+                className="sticky left-0 z-20 min-w-[7rem] border-b-2 border-r-2 border-ink bg-lilac-soft px-2 py-2 text-left font-display text-base font-semibold italic sm:min-w-[12rem] sm:px-3"
               >
                 Kolléga
               </th>
@@ -116,19 +116,19 @@ export function TeamMatrix({
                     key={day}
                     scope="col"
                     className={cn(
-                      "border-b border-r px-1 py-2 text-center font-normal",
+                      "border-b-2 border-r border-b-ink bg-lilac-soft px-1 py-2 text-center font-normal",
                       compact ? "min-w-[2.75rem]" : "min-w-[4.5rem] sm:min-w-[6rem]",
-                      weekend && "bg-muted/50 text-muted-foreground",
-                      isToday && "bg-primary/10",
+                      weekend && "bg-[#ebe4f7] text-muted-foreground",
+                      isToday && "bg-butter",
                     )}
                   >
-                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    <div className="text-xs font-medium">
                       {formatHu(day, compact ? "EEEEEE" : "EEE")}
                     </div>
                     <div
                       className={cn(
-                        "mx-auto grid h-7 w-7 place-items-center rounded-full text-sm font-semibold",
-                        isToday && "bg-primary text-primary-foreground",
+                        "mx-auto grid h-8 w-8 place-items-center rounded-full font-display text-lg font-bold",
+                        isToday && "border-2 border-ink bg-white",
                       )}
                     >
                       {formatHu(day, "d")}
@@ -137,7 +137,7 @@ export function TeamMatrix({
                       <div
                         className={cn(
                           "mt-1 whitespace-nowrap text-[11px]",
-                          office > 0 ? "font-medium text-blue-700" : "text-muted-foreground",
+                          office > 0 ? "font-semibold text-blue-800" : "text-muted-foreground",
                         )}
                         title={`${office} fő az irodában a ${total} főből`}
                       >
@@ -154,31 +154,30 @@ export function TeamMatrix({
               const isOwn = member.id === currentUserId;
               const row = matrix.get(member.id)!;
               return (
-                <tr key={member.id} className={cn(isOwn && "bg-primary/[0.03]")}>
+                <tr key={member.id} className={cn(isOwn && "bg-butter/25")}>
                   <th
                     scope="row"
                     className={cn(
-                      "sticky left-0 z-10 border-b border-r bg-card px-2 py-1 text-left font-normal sm:px-3",
-                      isOwn && "bg-indigo-50",
+                      "sticky left-0 z-10 border-b border-r-2 border-r-ink bg-white px-2 py-1 text-left font-normal sm:px-3",
+                      isOwn && "bg-[#FFF6D1]",
                     )}
                   >
                     <div className="flex items-center gap-2">
                       <span
                         className={cn(
-                          "hidden h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] font-semibold sm:grid",
-                          isOwn ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+                          "hidden h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-ink text-[11px] font-bold sm:grid",
+                          isOwn ? "bg-butter" : "bg-lilac",
                         )}
                         aria-hidden
                       >
                         {initials(member.full_name)}
                       </span>
                       <span className="min-w-0">
-                        <span className="block max-w-[6.5rem] truncate font-medium sm:max-w-[9rem]">{member.full_name}</span>
+                        <span className="block max-w-[6.5rem] truncate font-semibold sm:max-w-[9rem]">{member.full_name}</span>
                         {(isOwn || member.role === "admin") && (
-                          <span className="block text-[11px] text-muted-foreground">
-                            {isOwn ? "Te" : ""}
-                            {isOwn && member.role === "admin" ? " · " : ""}
-                            {member.role === "admin" ? "Admin" : ""}
+                          <span className="mt-0.5 flex gap-1 text-[11px] font-medium">
+                            {isOwn && <span className="rounded-full border border-ink bg-butter px-1.5">Te</span>}
+                            {member.role === "admin" && <span className="rounded-full border border-ink bg-lilac px-1.5">Admin</span>}
                           </span>
                         )}
                       </span>
@@ -208,8 +207,8 @@ export function TeamMatrix({
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-muted-foreground">
-        Tipp: a saját sorodban egy kattintással válthatsz Iroda és Home Office között. A halványabb cellák a heti rutinodból
+      <p className="text-sm text-muted-foreground">
+        A saját sorodban egy kattintással válthatsz Iroda és Home Office között. A halványabb cellák a heti rutinodból
         jönnek.
       </p>
     </div>

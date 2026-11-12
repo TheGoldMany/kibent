@@ -52,28 +52,28 @@ export default async function DashboardPage({
   const isAdmin = ctx.profile.role === "admin";
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {params.welcome && (
-        <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+        <div className="flex items-center gap-2 rounded-xl border-2 border-ink bg-emerald-100 px-4 py-3 text-sm font-medium shadow-brutal-xs">
           <PartyPopper className="h-4 w-4" />
           Üdv a(z) {ctx.company.name} csapatában! Állítsd be a heti rutinodat, hogy a kollégák lássák, mikor vagy bent.
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Csapatnaptár</h1>
-          <p className="text-sm text-muted-foreground">Ki van bent, ki dolgozik otthonról, és ki van szabadságon.</p>
+          <h1 className="font-display text-4xl font-bold leading-none sm:text-5xl">Csapatnaptár</h1>
+          <p className="mt-2 text-[15px]">Ki van bent, ki dolgozik otthonról, és ki van szabadságon.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
           <RecurringPatternModal initial={myPattern} />
           <LeaveRequestModal isAdmin={isAdmin} today={today} />
         </div>
       </div>
 
       {!myPattern && (
-        <p className="rounded-md border border-dashed bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-          💡 Még nincs heti rutinod. Állítsd be egyszer, és a naptár automatikusan kitöltődik minden hétre.
+        <p className="rounded-xl border-2 border-dashed border-ink bg-butter/50 px-4 py-3 text-sm">
+          Még nincs heti rutinod. Állítsd be egyszer a Heti rutin gombbal, és a naptár minden hétre kitöltődik.
         </p>
       )}
 

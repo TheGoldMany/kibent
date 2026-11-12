@@ -32,10 +32,10 @@ export default async function SettingsPage() {
   const members = [...rawMembers].sort((a, b) => collator.compare(a.full_name, b.full_name));
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Beállítások</h1>
-        <p className="text-sm text-muted-foreground">Profil, heti rutin, naptár szinkron{isAdmin && " és cégbeállítások"}.</p>
+        <h1 className="font-display text-4xl font-bold leading-none sm:text-5xl">Beállítások</h1>
+        <p className="mt-2 text-[15px]">Profil, heti rutin, naptár szinkron{isAdmin && " és cégbeállítások"}.</p>
       </div>
 
       <Section icon={User} title="Profil" description="A neved így jelenik meg a kollégáid naptárában.">
@@ -109,7 +109,7 @@ function Section({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Icon className="h-5 w-5 text-primary" /> {title}
+          <Icon className="h-6 w-6" /> {title}
         </CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
@@ -120,9 +120,9 @@ function Section({
 
 function Guide({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border bg-muted/30 p-3">
-      <p className="mb-2 font-medium">{title}</p>
-      <ol className="list-decimal space-y-1 pl-4 text-muted-foreground">{children}</ol>
+    <div className="rounded-xl border-2 border-ink bg-lilac-soft p-4">
+      <p className="mb-2 font-display text-lg font-semibold italic">{title}</p>
+      <ol className="list-decimal space-y-1 pl-4">{children}</ol>
     </div>
   );
 }

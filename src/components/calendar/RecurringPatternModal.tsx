@@ -29,7 +29,7 @@ const DAYS: { key: keyof PatternDays; label: string }[] = [
 const OPTIONS = [
   { value: "office", label: "Iroda", className: STATUS_META.office.className, emoji: "🏢" },
   { value: "remote", label: "Home Office", className: STATUS_META.remote.className, emoji: "🏠" },
-  { value: "", label: "Nincs", className: "bg-muted text-muted-foreground border-border", emoji: "" },
+  { value: "", label: "Nincs", className: "bg-lilac-soft text-ink", emoji: "" },
 ] as const;
 
 const EMPTY: PatternDays = { mon: null, tue: null, wed: null, thu: null, fri: null };
@@ -65,7 +65,7 @@ export function RecurringPatternForm({ initial, onSaved }: { initial: PatternDay
         <legend className="sr-only">Heti beosztás</legend>
         {DAYS.map(({ key, label }) => (
           <div key={key} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-            <span className="w-24 text-sm font-medium">{label}</span>
+            <span className="w-24 text-sm font-semibold">{label}</span>
             <div className="grid flex-1 grid-cols-3 gap-1" role="radiogroup" aria-label={label}>
               {OPTIONS.map((opt) => {
                 const checked = (values[key] ?? "") === opt.value;
@@ -73,8 +73,8 @@ export function RecurringPatternForm({ initial, onSaved }: { initial: PatternDay
                   <label
                     key={opt.value}
                     className={cn(
-                      "flex cursor-pointer items-center justify-center gap-1 rounded-md border px-2 py-2 text-xs font-medium transition-all has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
-                      checked ? cn(opt.className, "ring-1 ring-current") : "bg-background text-muted-foreground hover:bg-accent",
+                      "flex cursor-pointer items-center justify-center gap-1 rounded-full border-2 px-2 py-2 text-xs font-semibold transition-[box-shadow,background-color] has-[:focus-visible]:outline has-[:focus-visible]:outline-[3px] has-[:focus-visible]:outline-offset-2",
+                      checked ? cn(opt.className, "knit border-ink shadow-brutal-xs") : "border-ink/25 bg-white text-muted-foreground hover:border-ink",
                     )}
                   >
                     <input
@@ -109,7 +109,7 @@ export function RecurringPatternForm({ initial, onSaved }: { initial: PatternDay
 
 function PresetButton({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="rounded-full border px-2.5 py-1 hover:bg-accent">
+    <button type="button" onClick={onClick} className="press rounded-full border-2 border-ink bg-white px-3 py-1 font-semibold shadow-brutal-xs hover:bg-butter">
       {children}
     </button>
   );

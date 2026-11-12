@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 type Mode = "password" | "signup" | "magic";
 
 const TABS: { id: Mode; label: string }[] = [
-  { id: "password", label: "Bejelentkezés" },
+  { id: "password", label: "Jelszóval" },
   { id: "signup", label: "Regisztráció" },
   { id: "magic", label: "Magic link" },
 ];
@@ -24,7 +24,7 @@ export function LoginForms({ next, initialError }: { next: string; initialError?
 
   return (
     <div className="space-y-6">
-      <div role="tablist" className="grid grid-cols-3 rounded-lg bg-muted p-1 text-sm">
+      <div role="tablist" aria-label="Belépési mód" className="grid grid-cols-3 gap-1 rounded-full border-2 border-ink bg-lilac-soft p-1 text-[13px]">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -33,8 +33,8 @@ export function LoginForms({ next, initialError }: { next: string; initialError?
             aria-selected={mode === t.id}
             onClick={() => setMode(t.id)}
             className={cn(
-              "rounded-md px-2 py-1.5 font-medium transition-colors",
-              mode === t.id ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground",
+              "rounded-full px-2 py-2 font-semibold font-wide transition-colors",
+              mode === t.id ? "border-2 border-ink bg-butter shadow-brutal-xs" : "border-2 border-transparent hover:bg-white",
             )}
           >
             {t.label}
@@ -48,7 +48,7 @@ export function LoginForms({ next, initialError }: { next: string; initialError?
           <Field id="email" label="Email cím" type="email" autoComplete="email" />
           <Field id="password" label="Jelszó" type="password" autoComplete="current-password" />
           <FormMessage state={signInState} />
-          <SubmitButton className="w-full" pendingText="Belépés…">
+          <SubmitButton size="lg" className="w-full" pendingText="Belépés…">
             Belépés
           </SubmitButton>
         </form>
@@ -61,7 +61,7 @@ export function LoginForms({ next, initialError }: { next: string; initialError?
           <Field id="email" label="Email cím" type="email" autoComplete="email" />
           <Field id="password" label="Jelszó (min. 8 karakter)" type="password" autoComplete="new-password" />
           <FormMessage state={signUpState} />
-          <SubmitButton className="w-full" pendingText="Fiók létrehozása…">
+          <SubmitButton size="lg" className="w-full" pendingText="Fiók létrehozása…">
             Fiók létrehozása
           </SubmitButton>
         </form>
@@ -75,7 +75,7 @@ export function LoginForms({ next, initialError }: { next: string; initialError?
             Jelszó nélkül: küldünk egy egyszer használatos belépő linket. Ha még nincs fiókod, automatikusan létrejön.
           </p>
           <FormMessage state={magicState} />
-          <SubmitButton className="w-full" pendingText="Küldés…">
+          <SubmitButton size="lg" className="w-full" pendingText="Küldés…">
             Belépő link küldése
           </SubmitButton>
         </form>

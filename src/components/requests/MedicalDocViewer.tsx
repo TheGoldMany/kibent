@@ -42,8 +42,8 @@ export function MedicalDocViewer({ docs, canDelete }: { docs: DocItem[]; canDele
     <div className="space-y-1">
       <ul className="space-y-1">
         {docs.map((d) => (
-          <li key={d.id} className="flex items-center gap-2 rounded-md border bg-background px-2 py-1.5 text-sm">
-            <FileText className="h-4 w-4 shrink-0 text-rose-600" />
+          <li key={d.id} className="flex items-center gap-2 rounded-xl border-2 border-ink bg-white px-2.5 py-1.5 text-sm">
+            <FileText className="h-4 w-4 shrink-0" />
             <span className="min-w-0 flex-1 truncate" title={d.file_name}>
               {d.file_name}
             </span>
@@ -55,7 +55,7 @@ export function MedicalDocViewer({ docs, canDelete }: { docs: DocItem[]; canDele
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-7 px-2 text-muted-foreground hover:text-rose-700"
+                className="h-7 px-2 hover:bg-bubblegum"
                 onClick={() => remove(d.id)}
                 disabled={loadingId === d.id}
                 aria-label="Igazolás törlése"
@@ -66,7 +66,7 @@ export function MedicalDocViewer({ docs, canDelete }: { docs: DocItem[]; canDele
           </li>
         ))}
       </ul>
-      {error && <p className="text-xs text-rose-700">{error}</p>}
+      {error && <p className="text-xs font-semibold text-rose-800">{error}</p>}
 
       <Dialog open={!!preview} onOpenChange={(o) => !o && setPreview(null)}>
         <DialogContent className="max-w-3xl">
@@ -75,7 +75,7 @@ export function MedicalDocViewer({ docs, canDelete }: { docs: DocItem[]; canDele
             <DialogDescription>
               Bizalmas dokumentum. A megnyitó link 60 másodpercig érvényes.{" "}
               {preview && (
-                <a href={preview.url} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                <a href={preview.url} target="_blank" rel="noopener noreferrer" className="font-semibold underline decoration-2 underline-offset-2">
                   Megnyitás új lapon
                 </a>
               )}
@@ -83,10 +83,10 @@ export function MedicalDocViewer({ docs, canDelete }: { docs: DocItem[]; canDele
           </DialogHeader>
           {preview &&
             (preview.mimeType === "application/pdf" ? (
-              <iframe src={preview.url} title={preview.fileName} className="h-[70vh] w-full rounded-md border" />
+              <iframe src={preview.url} title={preview.fileName} className="h-[70vh] w-full rounded-xl border-2 border-ink" />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={preview.url} alt={preview.fileName} className="max-h-[70vh] w-full rounded-md border object-contain" />
+              <img src={preview.url} alt={preview.fileName} className="max-h-[70vh] w-full rounded-xl border-2 border-ink object-contain" />
             ))}
         </DialogContent>
       </Dialog>

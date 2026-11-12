@@ -38,14 +38,14 @@ export function CalendarToolbar({
             <ChevronRight />
           </Link>
         </Button>
-        <Button asChild variant={isCurrent ? "secondary" : "outline"} size="sm" className="h-10">
+        <Button asChild variant={isCurrent ? "default" : "outline"} size="sm" className="h-11 px-4">
           <Link href={href(view)} scroll={false}>
             Ma
           </Link>
         </Button>
       </div>
-      <h2 className="order-first min-w-0 basis-full truncate text-lg font-semibold sm:order-none sm:flex-1 sm:basis-auto">{rangeTitle(view, start, end)}</h2>
-      <div className="flex rounded-lg bg-muted p-1 text-sm" role="group" aria-label="Nézet">
+      <h2 className="order-first min-w-0 basis-full truncate font-display text-2xl font-semibold italic sm:order-none sm:flex-1 sm:basis-auto">{rangeTitle(view, start, end)}</h2>
+      <div className="flex gap-1 rounded-full border-2 border-ink bg-white p-1 text-sm" role="group" aria-label="Nézet">
         {VIEW_MODES.map((v) => (
           <Link
             key={v}
@@ -53,8 +53,8 @@ export function CalendarToolbar({
             scroll={false}
             aria-current={v === view ? "true" : undefined}
             className={cn(
-              "rounded-md px-3 py-1.5 font-medium transition-colors",
-              v === view ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground",
+              "rounded-full border-2 px-3.5 py-1.5 font-semibold transition-colors",
+              v === view ? "border-ink bg-lilac" : "border-transparent hover:bg-lilac-soft",
             )}
           >
             {VIEW_LABELS[v]}

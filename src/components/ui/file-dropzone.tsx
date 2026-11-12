@@ -50,15 +50,15 @@ export function FileDropzone({ name = "file", disabled }: { name?: string; disab
           if (!disabled) accept(e.dataTransfer.files[0]);
         }}
         className={cn(
-          "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-4 py-5 text-center text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
-          dragging ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50",
+          "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-ink px-4 py-6 text-center text-sm transition-colors has-[:focus-visible]:shadow-brutal-sm",
+          dragging ? "bg-butter" : "bg-lilac-soft hover:bg-lilac/60",
           disabled && "cursor-not-allowed opacity-50",
           file && "hidden",
         )}
       >
         <UploadCloud className="h-6 w-6 text-muted-foreground" />
         <span>
-          <span className="font-medium text-primary">Kattints a tallózáshoz</span> vagy húzd ide a fájlt
+          <span className="font-semibold underline decoration-2 underline-offset-2">Kattints a tallózáshoz</span> vagy húzd ide a fájlt
         </span>
         <span className="text-xs text-muted-foreground">PDF, JPG vagy PNG · max. 10 MB</span>
         <input
@@ -72,7 +72,7 @@ export function FileDropzone({ name = "file", disabled }: { name?: string; disab
         />
       </label>
       {file && (
-        <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+        <div className="flex items-center gap-2 rounded-xl border-2 border-ink bg-white px-3 py-2 text-sm shadow-brutal-xs">
           <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate">{file.name}</span>
           <span className="text-xs text-muted-foreground">{formatSize(file.size)}</span>

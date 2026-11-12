@@ -42,7 +42,8 @@ export function DayCell({
   const body = (
     <span
       className={cn(
-        "flex h-10 w-full items-center justify-center gap-1 rounded-md border text-xs font-medium",
+        "flex h-11 w-full items-center justify-center gap-1 rounded-lg border-2 text-xs font-semibold",
+        day.display !== "none" && "knit",
         meta.className,
         day.source === "pattern" && "opacity-75",
         day.display === "none" && isWeekend && "border-transparent",
@@ -65,8 +66,8 @@ export function DayCell({
     <td
       className={cn(
         "group relative border-b border-r p-1",
-        isWeekend && "bg-muted/50",
-        isToday && "bg-primary/5",
+        isWeekend && "bg-lilac-soft/70",
+        isToday && "bg-butter/40",
       )}
     >
       <Tooltip>
@@ -113,7 +114,7 @@ export function DayCell({
           onClick={onReset}
           aria-label="Visszaállítás a heti rutinra"
           title="Visszaállítás a heti rutinra"
-          className="absolute right-0 top-0 hidden h-5 w-5 place-items-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground focus-visible:grid group-hover:grid"
+          className="absolute right-0 top-0 hidden h-6 w-6 place-items-center rounded-full border-2 border-ink bg-white shadow-brutal-xs focus-visible:grid group-hover:grid"
         >
           <RotateCcw className="h-3 w-3" />
         </button>

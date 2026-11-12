@@ -14,16 +14,16 @@ export function OnboardingForms() {
   const [joinState, join] = useActionState(joinCompanyAction, null);
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
+    <div className="space-y-6">
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b-2 border-ink bg-butter">
           <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-primary" /> Új cég létrehozása
+            <Building2 className="h-6 w-6" /> Új cég létrehozása
           </CardTitle>
           <CardDescription>Te leszel az adminisztrátor, és meghívhatod a kollégáidat.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={create} className="space-y-4">
+          <form action={create} className="space-y-4 pt-6">
             <div className="space-y-2">
               <Label htmlFor="name">Cég neve</Label>
               <Input id="name" name="name" placeholder="pl. Példa Kft." required minLength={2} maxLength={120} />
@@ -36,19 +36,19 @@ export function OnboardingForms() {
         </CardContent>
       </Card>
 
-      <div className="flex items-center gap-3 text-xs uppercase text-muted-foreground">
-        <span className="h-px flex-1 bg-border" /> vagy <span className="h-px flex-1 bg-border" />
+      <div className="flex items-center gap-3 font-display text-lg italic">
+        <span className="h-0.5 flex-1 bg-ink" /> vagy <span className="h-0.5 flex-1 bg-ink" />
       </div>
 
-      <Card>
-        <CardHeader>
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b-2 border-ink bg-cornflower">
           <CardTitle className="flex items-center gap-2">
-            <UserPlus className="h-5 w-5 text-primary" /> Csatlakozás meghívókóddal
+            <UserPlus className="h-6 w-6" /> Csatlakozás meghívókóddal
           </CardTitle>
           <CardDescription>A kódot a céged adminisztrátorától kapod (8 karakter).</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={join} className="space-y-4">
+          <form action={join} className="space-y-4 pt-6">
             <div className="space-y-2">
               <Label htmlFor="code">Meghívókód</Label>
               <Input

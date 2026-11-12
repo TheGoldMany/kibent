@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Logo } from "@/components/layout/Logo";
+import { AuthShell } from "@/components/layout/AuthShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSessionContext } from "@/lib/auth";
@@ -25,20 +25,19 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
   if (error === null) redirect("/?welcome=1");
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-indigo-50 to-background p-4">
-      <Logo className="mb-8" />
-      <Card className="w-full max-w-md">
-        <CardHeader>
+    <AuthShell>
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b-2 border-ink bg-bubblegum">
           <CardTitle>Nem sikerült csatlakozni</CardTitle>
-          <CardDescription>{error}</CardDescription>
+          <CardDescription className="text-[15px] text-ink">{error}</CardDescription>
         </CardHeader>
-        <CardContent className="flex gap-2">
+        <CardContent className="flex gap-2 pt-6">
           <Button asChild>
             <Link href={ctx.company ? "/" : "/onboarding"}>{ctx.company ? "Vissza a naptárhoz" : "Tovább"}</Link>
           </Button>
         </CardContent>
       </Card>
-    </main>
+    </AuthShell>
   );
 }
 

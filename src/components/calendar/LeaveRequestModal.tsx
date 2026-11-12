@@ -46,10 +46,10 @@ function LeaveRequestForm({
     <form action={action} className="space-y-4">
       <input type="hidden" name="type" value={type} />
       <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Típus">
-        <TypeButton active={type === "vacation"} onClick={() => setType("vacation")} className="data-[active=true]:border-amber-300 data-[active=true]:bg-amber-50 data-[active=true]:text-amber-900">
+        <TypeButton active={type === "vacation"} onClick={() => setType("vacation")} className="data-[active=true]:bg-amber-100">
           <Palmtree className="h-4 w-4" /> Szabadság
         </TypeButton>
-        <TypeButton active={type === "sick"} onClick={() => setType("sick")} className="data-[active=true]:border-rose-300 data-[active=true]:bg-rose-50 data-[active=true]:text-rose-900">
+        <TypeButton active={type === "sick"} onClick={() => setType("sick")} className="data-[active=true]:bg-rose-100">
           <Thermometer className="h-4 w-4" /> Betegszabadság
         </TypeButton>
       </div>
@@ -75,10 +75,10 @@ function LeaveRequestForm({
         </div>
       </div>
 
-      <p className={cn("rounded-md bg-muted px-3 py-2 text-sm", workdays.length === 0 && "text-rose-700")}>
+      <p className={cn("rounded-xl border-2 border-ink bg-lilac-soft px-3.5 py-2.5 text-sm font-medium", workdays.length === 0 && "bg-bubblegum")}>
         {validRange
           ? workdays.length > 0
-            ? `${formatRangeHu(start, end)} · ${workdays.length} munkanap (a hétvégéket automatikusan kihagyjuk)`
+            ? `${formatRangeHu(start, end)}: ${workdays.length} munkanap. A hétvégéket automatikusan kihagyjuk.`
             : "A kiválasztott időszakban nincs munkanap."
           : "Válassz érvényes időszakot."}
       </p>
@@ -99,7 +99,7 @@ function LeaveRequestForm({
         <div className="space-y-2">
           <Label>Orvosi igazolás (opcionális, később is feltölthető)</Label>
           <FileDropzone />
-          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+          <p className="flex items-center gap-1.5 text-xs">
             <Lock className="h-3 w-3" /> Az igazolást kizárólag te és a céged adminisztrátorai láthatják.
           </p>
         </div>
@@ -142,8 +142,8 @@ function TypeButton({
       data-active={active}
       onClick={onClick}
       className={cn(
-        "flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors",
-        !active && "text-muted-foreground hover:bg-accent",
+        "flex items-center justify-center gap-2 rounded-xl border-2 border-ink px-3 py-3 text-sm font-semibold transition-[transform,box-shadow]",
+        active ? "shadow-brutal-sm" : "bg-white hover:bg-lilac-soft",
         className,
       )}
     >
@@ -158,7 +158,9 @@ export function LeaveRequestModal({ isAdmin, today }: { isAdmin: boolean; today:
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button>
-          <Palmtree /> Szabadság / Betegség
+          <Palmtree />
+          <span className="sm:hidden">Távollét</span>
+          <span className="hidden sm:inline">Szabadság / Betegség</span>
         </Button>
       </DialogTrigger>
       <DialogContent>

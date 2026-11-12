@@ -4,6 +4,7 @@ import { OnboardingForms } from "@/components/auth/OnboardingForms";
 import { getSessionContext } from "@/lib/auth";
 import { signOutAction } from "@/app/(auth)/actions";
 import { Button } from "@/components/ui/button";
+import { AuthShell } from "@/components/layout/AuthShell";
 
 export const metadata: Metadata = { title: "Kezdés" };
 
@@ -13,10 +14,11 @@ export default async function OnboardingPage() {
   if (ctx.company) redirect("/");
 
   return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <h1 className="text-2xl font-semibold">Szia, {ctx.profile.full_name.split(" ")[0]}! 👋</h1>
-        <p className="mt-1 text-muted-foreground">Már csak egy lépés: hozz létre egy céget, vagy csatlakozz egyhez.</p>
+    <AuthShell>
+    <div className="space-y-8">
+      <div>
+        <h1 className="font-display text-5xl font-bold leading-[0.95]">Szia, {ctx.profile.full_name.split(" ")[0]}!</h1>
+        <p className="mt-3 text-lg">Már csak egy lépés: hozz létre egy céget, vagy csatlakozz a csapatodhoz.</p>
       </div>
       <OnboardingForms />
       <form action={signOutAction} className="text-center">
@@ -25,5 +27,6 @@ export default async function OnboardingPage() {
         </Button>
       </form>
     </div>
+    </AuthShell>
   );
 }

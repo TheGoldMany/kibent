@@ -68,11 +68,11 @@ export default async function RequestsPage() {
   const teamHistory = groupRequests(data.team);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Kérelmek</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="font-display text-4xl font-bold leading-none sm:text-5xl">Kérelmek</h1>
+          <p className="mt-2 text-[15px]">
             {isAdmin ? "Szabadságkérelmek elbírálása és a csapat távollétei." : "Szabadságkérelmeid és betegszabadságaid."}
           </p>
         </div>
@@ -81,10 +81,10 @@ export default async function RequestsPage() {
 
       {isAdmin && (
         <section className="space-y-3">
-          <h2 className="flex items-center gap-2 text-lg font-semibold">
+          <h2 className="flex items-center gap-3 font-display text-3xl font-bold">
             Jóváhagyásra vár
             {pending.length > 0 && (
-              <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">{pending.length}</span>
+              <span className="rounded-full border-2 border-ink bg-amber-300 px-2.5 py-0.5 font-sans text-sm font-bold">{pending.length}</span>
             )}
           </h2>
           <ApprovalQueue groups={pending} names={names} />
@@ -92,11 +92,11 @@ export default async function RequestsPage() {
       )}
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Saját kérelmeim</h2>
+        <h2 className="font-display text-3xl font-bold">Saját kérelmeim</h2>
         {own.length === 0 ? (
           <EmptyState text="Még nincs szabadság- vagy betegszabadság-bejegyzésed az elmúlt 90 napban." />
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-4">
             {own.map((g) => (
               <OwnRequestRow key={g.groupId} group={g} docs={docsByGroup.get(g.groupId) ?? []} names={names} today={today} />
             ))}
@@ -107,15 +107,15 @@ export default async function RequestsPage() {
       {isAdmin && (
         <section className="space-y-3">
           <div>
-            <h2 className="text-lg font-semibold">Csapat távollétei</h2>
-            <p className="flex items-center gap-1 text-sm text-muted-foreground">
+            <h2 className="font-display text-3xl font-bold">Csapat távollétei</h2>
+            <p className="mt-1 flex items-center gap-1.5 text-sm">
               <Lock className="h-3.5 w-3.5" /> Az orvosi igazolásokat csak az adminisztrátorok és a feltöltő láthatják.
             </p>
           </div>
           {teamHistory.length === 0 ? (
             <EmptyState text="Nincs rögzített távollét az elmúlt 90 napban." />
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-4">
               {teamHistory.map((g) => (
                 <Card key={g.groupId}>
                   <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-start md:justify-between">
@@ -184,7 +184,7 @@ function OwnRequestRow({
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+    <div className="flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-ink bg-white p-8 text-center">
       <Inbox className="h-8 w-8" />
       <p>{text}</p>
     </div>

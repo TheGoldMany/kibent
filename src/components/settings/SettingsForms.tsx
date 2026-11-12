@@ -154,13 +154,13 @@ export function MemberList({
   const { pending, error, run } = useConfirmAction();
   return (
     <div className="space-y-2">
-      {error && <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p>}
-      <ul className="divide-y rounded-lg border">
+      {error && <p className="rounded-xl border-2 border-ink bg-bubblegum px-3.5 py-2.5 text-sm font-medium">{error}</p>}
+      <ul className="divide-y-2 divide-ink overflow-hidden rounded-xl border-2 border-ink bg-white">
         {members.map((m) => {
           const isSelf = m.id === currentUserId;
           return (
             <li key={m.id} className="flex items-center gap-3 px-3 py-2.5">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 border-ink bg-lilac text-xs font-bold">
                 {initials(m.full_name)}
               </span>
               <div className="min-w-0 flex-1">
@@ -170,7 +170,7 @@ export function MemberList({
                 <p className="truncate text-xs text-muted-foreground">{m.email}</p>
               </div>
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                {m.role === "admin" && <ShieldCheck className="h-3.5 w-3.5 text-primary" />}
+                {m.role === "admin" && <ShieldCheck className="h-3.5 w-3.5" />}
                 {m.role === "admin" ? "Admin" : "Tag"}
               </span>
               <DropdownMenu>

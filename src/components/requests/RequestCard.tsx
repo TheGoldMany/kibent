@@ -19,29 +19,26 @@ export function RequestSummary({
   return (
     <div className="flex min-w-0 items-start gap-3">
       {showPerson && (
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 border-ink bg-lilac text-xs font-bold">
           {initials(personName)}
         </span>
       )}
       <div className="min-w-0 space-y-1">
-        {showPerson && <p className="truncate font-medium">{personName}</p>}
+        {showPerson && <p className="truncate text-lg font-bold">{personName}</p>}
         <div className="flex flex-wrap items-center gap-2">
-          <StatusPill status={display} />
+          <StatusPill status={display} className="knit border-2 px-2.5 py-1" />
           {group.status === "vacation" && group.approval !== "pending" && (
             <Badge
               variant="outline"
-              className={cn(
-                group.approval === "approved" ? "border-emerald-300 text-emerald-800" : "border-rose-300 text-rose-800",
-              )}
+              className={cn(group.approval === "approved" ? "bg-emerald-100" : "bg-rose-100")}
             >
-              {group.approval === "approved" ? "Jóváhagyva" : "Elutasítva"}
-              {reviewerName ? ` · ${reviewerName}` : ""}
+              {group.approval === "approved" ? "Jóváhagyta" : "Elutasította"}
+              {reviewerName ? `: ${reviewerName}` : ""}
             </Badge>
           )}
         </div>
-        <p className="text-sm">
-          {formatRangeHu(group.startDate, group.endDate)}{" "}
-          <span className="text-muted-foreground">· {group.dayCount} munkanap</span>
+        <p className="text-[15px]">
+          <span className="font-semibold">{formatRangeHu(group.startDate, group.endDate)}</span>, {group.dayCount} munkanap
         </p>
         {group.note && <p className="text-sm italic text-muted-foreground">„{group.note}”</p>}
       </div>
