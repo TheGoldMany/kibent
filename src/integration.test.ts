@@ -199,7 +199,6 @@ run("integráció (helyi Postgres)", () => {
     const DashboardPage = (await import("@/app/(dashboard)/page")).default;
     const RequestsPage = (await import("@/app/(dashboard)/requests/page")).default;
     const SettingsPage = (await import("@/app/(dashboard)/settings/page")).default;
-    const { countPendingRequests } = await import("@/lib/queries");
     as(DANI);
     await expect(DashboardPage({ searchParams: Promise.resolve({ view: "month", date: "2026-12-01" }) })).resolves.toBeTruthy();
     await expect(RequestsPage()).resolves.toBeTruthy();
@@ -207,7 +206,9 @@ run("integráció (helyi Postgres)", () => {
     as(ANNA);
     await expect(RequestsPage()).resolves.toBeTruthy();
     const companyId = (await pool.query("select id from companies")).rows[0].id;
-    expect(await countPendingRequests(ANNA, companyId)).toBe(0);
+    const { getSessionContext } = await import("@/lib/auth");
+    expect((await getSessionContext())?.pendingCount).toBe(0);
+    void companyId;
   });
 
   it("beállítások: szerepkör, utolsó admin védelme, tag eltávolítása", async () => {

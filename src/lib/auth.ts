@@ -9,6 +9,8 @@ export type SessionContext = {
   userId: string;
   profile: Profile;
   company: Company | null;
+  /** Függő szabadságkérelmek száma (csak adminnak, egyébként 0). */
+  pendingCount: number;
 };
 
 type SessionUser = { id: string; email: string; name: string };
@@ -24,8 +26,25 @@ const getSessionUser = cache(async (): Promise<SessionUser | null> => {
 /** A bejelentkezett Neon Auth felhasználó azonosítója (vagy null). */
 export const getSessionUserId = cache(async (): Promise<string | null> => (await getSessionUser())?.id ?? null);
 
-const PROFILE_SQL = `select id, company_id, email, full_name, avatar_url, role, ical_token, created_at
-                       from profiles where id = $1`;
+/**
+ * Egyetlen lekérdezés: profil + cég + (adminnak) a függő szabadságkérelmek száma.
+ * Kevesebb adatbázis-kör = gyorsabb oldalbetöltés.
+ */
+const SESSION_SQL = `
+  select row_to_json(p) as profile,
+         case when c.id is null then null
+              else json_build_object('id', c.id, 'name', c.name, 'invite_code', c.invite_code, 'created_at', c.created_at)
+         end as company,
+         case when p.role = 'admin' and p.company_id is not null then (
+           select count(distinct coalesce(s.request_group_id::text, s.user_id::text))::int
+             from schedules s
+            where s.company_id = p.company_id and s.approval_status = 'pending'
+         ) else 0 end as pending_count
+    from (select id, company_id, email, full_name, avatar_url, role, ical_token, created_at
+            from profiles where id = $1) p
+    left join companies c on c.id = p.company_id`;
+
+type SessionRow = { profile: Profile; company: Company | null; pending_count: number };
 
 /** Kérésenként egyszer lekérdezett session + profil + cég. */
 export const getSessionContext = cache(async (): Promise<SessionContext | null> => {
@@ -34,19 +53,14 @@ export const getSessionContext = cache(async (): Promise<SessionContext | null> 
   const userId = user.id;
 
   return withUser(userId, async (tx) => {
-    let profile = await tx.one<Profile>(PROFILE_SQL, [userId]);
-    if (!profile) {
+    let row = await tx.one<SessionRow>(SESSION_SQL, [userId]);
+    if (!row) {
       // Első belépés olyan környezetben, ahol a neon_auth trigger nem fut.
       await tx.query("select public.ensure_profile($1, $2)", [user.email, user.name]);
-      profile = await tx.one<Profile>(PROFILE_SQL, [userId]);
+      row = await tx.one<SessionRow>(SESSION_SQL, [userId]);
     }
-    if (!profile) return null;
-    const company = profile.company_id
-      ? await tx.one<Company>(`select id, name, invite_code, created_at from companies where id = $1`, [
-          profile.company_id,
-        ])
-      : null;
-    return { userId, profile, company };
+    if (!row) return null;
+    return { userId, profile: row.profile, company: row.company, pendingCount: row.pending_count };
   });
 });
 

@@ -66,12 +66,18 @@ function wrap(client: PoolClient): Tx {
  * Felhasználói kontextusban futó tranzakció: korlátozott `kibent_app` szerepkör
  * + `app.user_id`, így MINDEN lekérdezésre érvényesek az RLS szabályok.
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function withUser<T>(userId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  // A felhasználó-azonosító literálként kerül az SQL-be (egyetlen oda-vissza út a három
+  // beállító utasításra), ezért szigorúan UUID-nak kell lennie.
+  if (!UUID_RE.test(userId)) throw new Error("Érvénytelen felhasználó-azonosító.");
   const client = await getPool().connect();
   try {
-    await client.query("begin");
-    await client.query("set local role kibent_app");
-    await client.query("select set_config('app.user_id', $1, true)", [userId]);
+    // Egy hálózati kör: tranzakció + korlátozott szerepkör + app.user_id
+    await client.query(
+      `begin; set local role kibent_app; select set_config('app.user_id', '${userId.toLowerCase()}', true)`,
+    );
     const result = await fn(wrap(client));
     await client.query("commit");
     return result;

@@ -25,24 +25,29 @@ export default async function DashboardPage({
   const anchor = isISODate(params.date) ? params.date : today;
   const { start, end, days } = getRange(view, anchor);
 
-  const { members: rawMembers, patterns, schedules } = await withUser(ctx.userId, async (tx) => {
-    const [members, patterns, schedules] = await Promise.all([
-      tx.query<{ id: string; full_name: string; role: Role }>(
-        "select id, full_name, role from profiles where company_id = $1",
-        [ctx.company.id],
-      ),
-      tx.query<PatternDays & { user_id: string }>(
-        "select user_id, mon, tue, wed, thu, fri from recurring_patterns where company_id = $1",
-        [ctx.company.id],
-      ),
-      tx.query<ScheduleLike>(
-        `select user_id, date, status, approval_status, request_group_id, note
-           from schedules where company_id = $1 and date between $2 and $3`,
-        [ctx.company.id, start, end],
-      ),
-    ]);
-    return { members, patterns, schedules };
-  });
+  // Egyetlen adatbázis-kör: tagok, heti rutinok és az időszak bejegyzései JSON-ként.
+  const data = await withUser(ctx.userId, (tx) =>
+    tx.one<{
+      members: { id: string; full_name: string; role: Role }[];
+      patterns: (PatternDays & { user_id: string })[];
+      schedules: ScheduleLike[];
+    }>(
+      `select
+         coalesce((select json_agg(json_build_object('id', id, 'full_name', full_name, 'role', role))
+                     from profiles where company_id = $1), '[]') as members,
+         coalesce((select json_agg(json_build_object('user_id', user_id, 'mon', mon, 'tue', tue,
+                                                     'wed', wed, 'thu', thu, 'fri', fri))
+                     from recurring_patterns where company_id = $1), '[]') as patterns,
+         coalesce((select json_agg(json_build_object('user_id', user_id, 'date', date, 'status', status,
+                                                     'approval_status', approval_status,
+                                                     'request_group_id', request_group_id, 'note', note))
+                     from schedules where company_id = $1 and date between $2 and $3), '[]') as schedules`,
+      [ctx.company.id, start, end],
+    ),
+  );
+  const rawMembers = data?.members ?? [];
+  const patterns = data?.patterns ?? [];
+  const schedules = data?.schedules ?? [];
 
   const collator = new Intl.Collator("hu");
   const members = [...rawMembers].sort((a, b) =>

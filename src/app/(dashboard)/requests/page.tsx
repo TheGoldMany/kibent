@@ -22,38 +22,41 @@ export default async function RequestsPage() {
   const today = todayISO();
   const since = toISODate(subDays(parseISODate(today), HISTORY_DAYS));
 
-  const cols = "user_id, date, status, approval_status, request_group_id, note, created_at, reviewed_by";
-  const data = await withUser(ctx.userId, async (tx) => {
-    const own = await tx.query<RequestRow>(
-      `select ${cols} from schedules
-        where user_id = $1 and status in ('vacation', 'sick') and request_group_id is not null and date >= $2`,
-      [ctx.userId, since],
-    );
-    const pending = isAdmin
-      ? await tx.query<RequestRow>(
-          `select ${cols} from schedules
-            where company_id = $1 and status = 'vacation' and approval_status = 'pending' and user_id <> $2`,
-          [ctx.company.id, ctx.userId],
-        )
-      : [];
-    const team = isAdmin
-      ? await tx.query<RequestRow>(
-          `select ${cols} from schedules
-            where company_id = $1 and status in ('sick', 'vacation') and approval_status <> 'pending'
-              and user_id <> $2 and request_group_id is not null and date >= $3`,
-          [ctx.company.id, ctx.userId, since],
-        )
-      : [];
-    const members = await tx.query<{ id: string; full_name: string }>(
-      "select id, full_name from profiles where company_id = $1",
-      [ctx.company.id],
-    );
-    // RLS: member csak a sajátját, admin a cég összes igazolását kapja vissza
-    const docs = await tx.query<DocItem & { request_group_id: string }>(
-      "select id, request_group_id, file_name, mime_type, uploaded_at from medical_documents order by uploaded_at",
-    );
-    return { own, pending, team, members, docs };
-  });
+  // Egyetlen adatbázis-kör: minden lista JSON-ként (RLS alatt).
+  const row = (r: string) =>
+    `json_build_object('user_id', ${r}.user_id, 'date', ${r}.date, 'status', ${r}.status,
+       'approval_status', ${r}.approval_status, 'request_group_id', ${r}.request_group_id,
+       'note', ${r}.note, 'created_at', ${r}.created_at, 'reviewed_by', ${r}.reviewed_by)`;
+  const data = await withUser(ctx.userId, (tx) =>
+    tx.one<{
+      own: RequestRow[];
+      pending: RequestRow[];
+      team: RequestRow[];
+      members: { id: string; full_name: string }[];
+      docs: (DocItem & { request_group_id: string })[];
+    }>(
+      `select
+         coalesce((select json_agg(${row("s")}) from schedules s
+                    where s.user_id = $2 and s.status in ('vacation', 'sick')
+                      and s.request_group_id is not null and s.date >= $3), '[]') as own,
+         coalesce((select json_agg(${row("s")}) from schedules s
+                    where $4 and s.company_id = $1 and s.status = 'vacation'
+                      and s.approval_status = 'pending' and s.user_id <> $2), '[]') as pending,
+         coalesce((select json_agg(${row("s")}) from schedules s
+                    where $4 and s.company_id = $1 and s.status in ('sick', 'vacation')
+                      and s.approval_status <> 'pending' and s.user_id <> $2
+                      and s.request_group_id is not null and s.date >= $3), '[]') as team,
+         coalesce((select json_agg(json_build_object('id', id, 'full_name', full_name))
+                     from profiles where company_id = $1), '[]') as members,
+         -- RLS: member csak a sajátját, admin a cég összes igazolását kapja vissza
+         coalesce((select json_agg(json_build_object('id', id, 'request_group_id', request_group_id,
+                                                     'file_name', file_name, 'mime_type', mime_type,
+                                                     'uploaded_at', uploaded_at) order by uploaded_at)
+                     from medical_documents), '[]') as docs`,
+      [ctx.company.id, ctx.userId, since, isAdmin],
+    ),
+  );
+  if (!data) throw new Error("Nem sikerült betölteni a kérelmeket.");
 
   const names: Record<string, string> = Object.fromEntries(data.members.map((m) => [m.id, m.full_name]));
   const docsByGroup = new Map<string, DocItem[]>();

@@ -14,17 +14,22 @@ export const metadata: Metadata = { title: "Beállítások" };
 export default async function SettingsPage() {
   const ctx = await requireMember();
   const isAdmin = ctx.profile.role === "admin";
-  const { pattern, rawMembers } = await withUser(ctx.userId, async (tx) => ({
-    pattern: await tx.one<PatternDays>("select mon, tue, wed, thu, fri from recurring_patterns where user_id = $1", [
-      ctx.userId,
-    ]),
-    rawMembers: isAdmin
-      ? await tx.query<{ id: string; full_name: string; email: string; role: Role }>(
-          "select id, full_name, email, role from profiles where company_id = $1",
-          [ctx.company.id],
-        )
-      : [],
-  }));
+  // Egyetlen adatbázis-kör
+  const data = await withUser(ctx.userId, (tx) =>
+    tx.one<{
+      pattern: PatternDays | null;
+      members: { id: string; full_name: string; email: string; role: Role }[];
+    }>(
+      `select
+         (select json_build_object('mon', mon, 'tue', tue, 'wed', wed, 'thu', thu, 'fri', fri)
+            from recurring_patterns where user_id = $1) as pattern,
+         coalesce((select json_agg(json_build_object('id', id, 'full_name', full_name, 'email', email, 'role', role))
+                     from profiles where $3 and company_id = $2), '[]') as members`,
+      [ctx.userId, ctx.company.id, isAdmin],
+    ),
+  );
+  const pattern = data?.pattern ?? null;
+  const rawMembers = data?.members ?? [];
 
   const base = siteUrl();
   const icalUrl = `${base}/api/ical/${ctx.profile.ical_token}/calendar.ics`;
