@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { LoginForms } from "@/components/auth/LoginForms";
 import { KnitWeek } from "@/components/landing/KnitWeek";
 import { Logo } from "@/components/layout/Logo";
+import { SiteFooter } from "@/components/layout/SiteFooter";
 import { StatusPill } from "@/components/calendar/StatusPill";
 import { getSessionContext, safeNext } from "@/lib/auth";
 
@@ -46,7 +47,7 @@ export default async function LoginPage({
         </a>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 sm:px-6">
+      <main className="mx-auto max-w-6xl px-4 pb-8 sm:px-6">
         {/* Hős: cím + élő heti minta balra, belépés jobbra */}
         <section className="grid gap-10 pb-16 pt-6 lg:grid-cols-[1.2fr_0.8fr] lg:gap-14 lg:pt-10">
           <div className="space-y-8">
@@ -87,7 +88,7 @@ export default async function LoginPage({
         </section>
 
         {/* Funkciók: a naptár színei mesélik el, mit tud */}
-        <section aria-labelledby="mit-tud" className="mb-16 rounded-2xl border-2 border-ink bg-lilac px-5 py-10 shadow-brutal sm:px-10">
+        <section id="mit-tud-blokk" aria-labelledby="mit-tud" className="mb-16 scroll-mt-6 rounded-2xl border-2 border-ink bg-lilac px-5 py-10 shadow-brutal sm:px-10">
           <h2 id="mit-tud" className="max-w-[18ch] font-display text-4xl font-bold leading-tight sm:text-5xl">
             Minden szín jelent valamit
           </h2>
@@ -106,7 +107,7 @@ export default async function LoginPage({
           </ul>
         </section>
 
-        <section className="mb-16 grid items-center gap-6 rounded-2xl border-2 border-ink bg-cornflower px-5 py-8 shadow-brutal sm:px-10 md:grid-cols-[1fr_auto]">
+        <section id="naptar-szinkron" className="mb-16 grid scroll-mt-6 items-center gap-6 rounded-2xl border-2 border-ink bg-cornflower px-5 py-8 shadow-brutal sm:px-10 md:grid-cols-[1fr_auto]">
           <div>
             <h2 className="font-display text-3xl font-bold">A saját naptáradban is</h2>
             <p className="mt-2 max-w-[56ch] leading-relaxed">
@@ -120,12 +121,13 @@ export default async function LoginPage({
         </section>
       </main>
 
-      <footer className="border-t-2 border-ink bg-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-6 text-sm sm:px-6">
-          <Logo />
-          <p>Csapatnaptár hibrid és remote csapatoknak. Ingyenes.</p>
-        </div>
-      </footer>
+      <SiteFooter
+        links={[
+          { href: "#belepes", label: "Belépés és regisztráció" },
+          { href: "#mit-tud-blokk", label: "Mit tud a Kibent?" },
+          { href: "#naptar-szinkron", label: "Naptár szinkron" },
+        ]}
+      />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { Logo } from "@/components/layout/Logo";
+import { SlimFooter } from "@/components/layout/SiteFooter";
 import { MainNav } from "@/components/layout/MainNav";
 import { InviteButton } from "@/components/layout/InviteButton";
 import { UserMenu } from "@/components/layout/UserMenu";
@@ -33,6 +34,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </div>
       </header>
       <main className="mx-auto w-full max-w-[1400px] flex-1 px-3 py-6 sm:px-4 sm:py-8">{children}</main>
+      <SlimFooter />
     </div>
   );
 }

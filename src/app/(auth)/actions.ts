@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getAuth } from "@/lib/auth/server";
 import { getSessionContext, safeNext } from "@/lib/auth";
 import { dbErrorMessage, withUser } from "@/lib/db";
+import { z } from "zod";
 import { siteUrl } from "@/lib/utils";
 import {
   companyNameSchema,
@@ -22,7 +23,10 @@ function authErrorHu(message: string | undefined): string {
   if (/invalid login credentials|invalid email or password|invalid password/i.test(message)) {
     return "Hibás email cím vagy jelszó.";
   }
-  if (/email not (confirmed|verified)/i.test(message)) return "Előbb erősítsd meg az email címed a kiküldött linkkel.";
+  if (/email not (confirmed|verified)/i.test(message)) return "Előbb erősítsd meg az email címed az emailben kapott kóddal.";
+  if (/invalid otp|invalid code|otp.*(invalid|incorrect)/i.test(message)) return "Hibás kód. Ellenőrizd, és próbáld újra.";
+  if (/otp.*expired|code.*expired|expired/i.test(message)) return "A kód lejárt. Kérj újat.";
+  if (/too many attempts/i.test(message)) return "Túl sok hibás próbálkozás. Kérj új kódot.";
   if (/password (is )?too short/i.test(message)) return "A jelszó legalább 8 karakter legyen.";
   if (/password (is )?too long/i.test(message)) return "A jelszó túl hosszú.";
   if (/invalid email/i.test(message)) return "Érvénytelen email cím.";
@@ -37,17 +41,53 @@ function authErrorHu(message: string | undefined): string {
   return message;
 }
 
-export async function signInAction(_prev: FormState, formData: FormData): Promise<FormState> {
+/** Az auth űrlapok állapota: hibák/üzenetek + a kódos lépéshez szükséges email cím. */
+export type AuthState =
+  | (FormState & {
+      /** Erre a címre ment ki megerősítő kód (regisztráció / megerősítetlen belépés). */
+      verifyEmail?: string;
+      /** Erre a címre ment ki belépő kód (jelszó nélküli belépés). */
+      codeSentTo?: string;
+      /** A megerősítés kész, de nincs session – jelszóval kell belépni. */
+      verified?: string;
+    })
+  | null;
+
+function hasToken(data: unknown): boolean {
+  return !!data && typeof data === "object" && "token" in data && !!(data as { token?: unknown }).token;
+}
+
+const otpSchema = z.object({
+  email: z.string().trim().email("Érvénytelen email cím."),
+  otp: z
+    .string()
+    .trim()
+    .regex(/^\d{4,10}$/, "A kód csak számjegyekből áll – másold be pontosan az emailből."),
+});
+
+export async function signInAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
   const parsed = loginSchema.safeParse({ email: formData.get("email"), password: formData.get("password") });
   if (!parsed.success) return { error: firstError(parsed.error) };
 
   const { error } = await getAuth().signIn.email(parsed.data);
-  if (error) return { error: authErrorHu(error.message) };
+  if (error) {
+    // Megerősítetlen email: küldünk egy friss kódot, és a kódos lépésre váltunk.
+    if (/email not (confirmed|verified)/i.test(error.message ?? "")) {
+      await getAuth()
+        .emailOtp.sendVerificationOtp({ email: parsed.data.email, type: "email-verification" })
+        .catch(() => undefined);
+      return {
+        error: "Az email címed még nincs megerősítve. Küldtünk egy új kódot, írd be lent.",
+        verifyEmail: parsed.data.email,
+      };
+    }
+    return { error: authErrorHu(error.message) };
+  }
 
   redirect(safeNext(formData.get("next")));
 }
 
-export async function signUpAction(_prev: FormState, formData: FormData): Promise<FormState> {
+export async function signUpAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
   const parsed = signupSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
@@ -65,23 +105,57 @@ export async function signUpAction(_prev: FormState, formData: FormData): Promis
   if (error) return { error: authErrorHu(error.message) };
 
   // Ha az email megerősítés ki van kapcsolva, a regisztráció után azonnal van session.
-  // (Better Auth: a token null, ha email megerősítés szükséges.)
-  if (data && "token" in data && data.token) redirect(next);
-  return { success: "Elküldtük a megerősítő linket az email címedre. Kattints rá a folytatáshoz!" };
+  // (Better Auth: a token null, ha email megerősítés szükséges – ilyenkor kódot küld.)
+  if (hasToken(data)) redirect(next);
+  return { verifyEmail: parsed.data.email };
 }
 
-export async function magicLinkAction(_prev: FormState, formData: FormData): Promise<FormState> {
+/** A regisztrációkor (vagy megerősítetlen belépéskor) emailben kapott kód ellenőrzése. */
+export async function verifyEmailCodeAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  const email = String(formData.get("email") ?? "");
+  const parsed = otpSchema.safeParse({ email, otp: formData.get("otp") });
+  if (!parsed.success) return { error: firstError(parsed.error), verifyEmail: email };
+
+  const { data, error } = await getAuth().emailOtp.verifyEmail(parsed.data);
+  if (error) return { error: authErrorHu(error.message), verifyEmail: email };
+
+  // Ha a Neon Auth megerősítés után automatikusan beléptet, mehetünk tovább.
+  if (hasToken(data)) redirect(safeNext(formData.get("next")));
+  return { verified: parsed.data.email, success: "Az email címed megerősítve. Most lépj be a jelszavaddal." };
+}
+
+/** Új kód kérése (megerősítéshez vagy jelszó nélküli belépéshez). */
+export async function resendCodeAction(
+  email: string,
+  purpose: "email-verification" | "sign-in",
+): Promise<{ ok: boolean; message: string }> {
+  const parsed = magicLinkSchema.safeParse({ email });
+  if (!parsed.success) return { ok: false, message: firstError(parsed.error) };
+  const { error } = await getAuth().emailOtp.sendVerificationOtp({ email: parsed.data.email, type: purpose });
+  if (error) return { ok: false, message: authErrorHu(error.message) };
+  return { ok: true, message: "Új kódot küldtünk. Nézd meg a postafiókod (a spam mappát is)." };
+}
+
+/** Jelszó nélküli belépés, 1. lépés: kód küldése a regisztrált email címre. */
+export async function sendSignInCodeAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
   const parsed = magicLinkSchema.safeParse({ email: formData.get("email") });
   if (!parsed.success) return { error: firstError(parsed.error) };
 
-  const next = safeNext(formData.get("next"));
-  const { error } = await getAuth().signIn.magicLink({
-    email: parsed.data.email,
-    callbackURL: `${siteUrl()}${next}`,
-    errorCallbackURL: `${siteUrl()}/login?error=link&next=${encodeURIComponent(next)}`,
-  });
+  const { error } = await getAuth().emailOtp.sendVerificationOtp({ email: parsed.data.email, type: "sign-in" });
   if (error) return { error: authErrorHu(error.message) };
-  return { success: "Elküldtük a belépő linket! Nézd meg a postafiókod (a spam mappát is)." };
+  return { codeSentTo: parsed.data.email };
+}
+
+/** Jelszó nélküli belépés, 2. lépés: a kód beváltása. */
+export async function signInWithCodeAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  const email = String(formData.get("email") ?? "");
+  const parsed = otpSchema.safeParse({ email, otp: formData.get("otp") });
+  if (!parsed.success) return { error: firstError(parsed.error), codeSentTo: email };
+
+  const { error } = await getAuth().signIn.emailOtp(parsed.data);
+  if (error) return { error: authErrorHu(error.message), codeSentTo: email };
+
+  redirect(safeNext(formData.get("next")));
 }
 
 export async function signOutAction() {
