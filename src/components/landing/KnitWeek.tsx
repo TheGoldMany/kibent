@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Building2 } from "lucide-react";
+import { Building2, UtensilsCrossed } from "lucide-react";
 import { StatusIcon } from "@/components/calendar/StatusIcon";
 import { STATUS_META, type DisplayStatus } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
 const DAYS = ["H", "K", "Sze", "Cs", "P"] as const;
+const DAY_NAMES_ON = ["Hétfőn", "Kedden", "Szerdán", "Csütörtökön", "Pénteken"] as const;
 
 type Row = { name: string; days: DisplayStatus[]; you?: boolean };
 
@@ -25,6 +26,11 @@ const INITIAL: Row[] = [
 export function KnitWeek({ className }: { className?: string }) {
   const [rows, setRows] = useState(INITIAL);
 
+  // Csapatnap-tipp: melyik napon lesztek a legtöbben bent?
+  const counts = DAYS.map((_, i) => rows.filter((r) => r.days[i] === "office").length);
+  const max = Math.max(...counts);
+  const bestIndex = counts.indexOf(max);
+
   function toggle(dayIndex: number) {
     setRows((prev) =>
       prev.map((r) =>
@@ -38,12 +44,12 @@ export function KnitWeek({ className }: { className?: string }) {
   return (
     <figure className={cn("rounded-2xl border-2 border-ink bg-white shadow-brutal-lg", className)}>
       <figcaption className="flex items-baseline justify-between gap-3 rounded-t-[14px] border-b-2 border-ink bg-bubblegum px-4 py-3">
-        <span className="font-display text-xl font-semibold italic">A csapatod hete</span>
+        <span className="font-display text-xl font-semibold italic lg:text-2xl">A csapatod hete</span>
         <span className="text-sm">Példa Kft.</span>
       </figcaption>
 
-      <div className="overflow-x-auto p-3 sm:p-4">
-        <table className="w-full border-separate border-spacing-1.5 text-sm" aria-label="Példa heti beosztás">
+      <div className="overflow-x-auto p-3 sm:p-5">
+        <table className="w-full border-separate border-spacing-1.5 text-sm lg:border-spacing-2 lg:text-base" aria-label="Példa heti beosztás">
           <thead>
             <tr>
               <th scope="col" className="w-20 text-left font-normal text-muted-foreground">
@@ -53,7 +59,7 @@ export function KnitWeek({ className }: { className?: string }) {
                 const inOffice = rows.filter((r) => r.days[i] === "office").length;
                 return (
                   <th key={d} scope="col" className="pb-1 text-center font-normal">
-                    <span className="block font-semibold">{d}</span>
+                    <span className={cn("mx-auto block w-fit rounded-full px-2 font-semibold", i === bestIndex && max > 0 && "border-2 border-ink bg-butter")}>{d}</span>
                     <span className="flex items-center justify-center gap-1 whitespace-nowrap text-xs tabular-nums text-blue-800" aria-label={`${inOffice} fő az irodában`}>
                       <Building2 aria-hidden strokeWidth={2.25} className="h-3 w-3" />
                       {inOffice}/{rows.length}
@@ -79,13 +85,13 @@ export function KnitWeek({ className }: { className?: string }) {
                   const cell = (
                     <span
                       className={cn(
-                        "knit flex h-11 min-w-[3.25rem] items-center justify-center rounded-lg border-2 animate-knit-in",
+                        "knit flex h-11 min-w-[3.25rem] items-center justify-center rounded-lg border-2 animate-knit-in lg:h-14 lg:min-w-[4.5rem]",
                         meta.className,
                       )}
                       style={{ animationDelay: `${(r * 5 + d) * 40}ms` }}
                       aria-hidden
                     >
-                      <StatusIcon status={status} className="h-5 w-5" />
+                      <StatusIcon status={status} className="h-5 w-5 lg:h-6 lg:w-6" />
                     </span>
                   );
                   return (
@@ -115,9 +121,20 @@ export function KnitWeek({ className }: { className?: string }) {
           </tbody>
         </table>
       </div>
-      <p className="border-t-2 border-dashed border-ink/30 px-4 py-3 text-sm text-muted-foreground">
-        Próbáld ki: kattints a saját soraid celláira, és figyeld, hogyan változik az irodai létszám.
-      </p>
+      <div className="space-y-2 border-t-2 border-ink px-4 py-4 sm:px-5">
+        {max > 0 && (
+          <p className="flex items-start gap-2 text-[15px] lg:text-base" aria-live="polite">
+            <UtensilsCrossed aria-hidden strokeWidth={2.25} className="mt-0.5 h-5 w-5 shrink-0" />
+            <span>
+              <span className="font-semibold">Csapatnap-tipp:</span> {DAY_NAMES_ON[bestIndex]} lesztek bent a legtöbben ({max}{" "}
+              fő). Jó alkalom egy közös ebédre.
+            </span>
+          </p>
+        )}
+        <p className="text-sm text-muted-foreground">
+          Próbáld ki: kattints a saját soraid celláira, és figyeld, hogyan változik a létszám és a tipp.
+        </p>
+      </div>
     </figure>
   );
 }

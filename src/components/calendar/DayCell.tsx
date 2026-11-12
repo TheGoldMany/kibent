@@ -43,7 +43,7 @@ export function DayCell({
   const body = (
     <span
       className={cn(
-        "flex h-11 w-full items-center justify-center gap-1 rounded-lg border-2 text-xs font-semibold",
+        "flex h-12 w-full items-center justify-center gap-1.5 rounded-lg border-2 text-[13px] font-semibold xl:h-14",
         day.display !== "none" && "knit",
         meta.className,
         day.source === "pattern" && "opacity-75",
@@ -66,7 +66,7 @@ export function DayCell({
   return (
     <td
       className={cn(
-        "group relative border-b border-r p-1",
+        "group relative border-b border-r p-1.5",
         isWeekend && "bg-lilac-soft/70",
         isToday && "bg-butter/40",
       )}

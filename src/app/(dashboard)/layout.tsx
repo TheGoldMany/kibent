@@ -17,7 +17,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <div className="flex min-h-screen flex-col bg-cotton">
       <header className="sticky top-0 z-40 border-b-2 border-ink bg-white">
-        <div className="mx-auto flex h-16 max-w-[1400px] items-center gap-2 px-3 sm:gap-4 sm:px-4">
+        <div className="mx-auto flex h-[4.5rem] max-w-[1600px] items-center gap-2 px-3 sm:gap-4 sm:px-6 lg:px-10">
           <Logo />
           <span className="hidden truncate font-display text-lg italic lg:inline">{ctx.company.name}</span>
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
@@ -32,7 +32,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-[1400px] flex-1 px-3 py-6 sm:px-4 sm:py-8">{children}</main>
+      <main className="mx-auto w-full max-w-[1600px] flex-1 px-3 py-8 sm:px-6 sm:py-10 lg:px-10">{children}</main>
       <SlimFooter />
     </div>
   );

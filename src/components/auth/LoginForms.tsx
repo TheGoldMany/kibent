@@ -19,10 +19,10 @@ import { cn } from "@/lib/utils";
 
 type Mode = "password" | "signup" | "code";
 
-const TABS: { id: Mode; label: string }[] = [
+const TABS: { id: Mode; label: string; short?: string }[] = [
   { id: "password", label: "Jelszóval" },
   { id: "signup", label: "Regisztráció" },
-  { id: "code", label: "Emailes kód" },
+  { id: "code", label: "Emailes kód", short: "Kóddal" },
 ];
 
 export function LoginForms({ next, initialError }: { next: string; initialError?: string }) {
@@ -73,7 +73,14 @@ export function LoginForms({ next, initialError }: { next: string; initialError?
               mode === t.id ? "border-2 border-ink bg-butter shadow-brutal-xs" : "border-2 border-transparent hover:bg-white",
             )}
           >
-            {t.label}
+            {t.short ? (
+              <>
+                <span className="sm:hidden">{t.short}</span>
+                <span className="hidden sm:inline">{t.label}</span>
+              </>
+            ) : (
+              t.label
+            )}
           </button>
         ))}
       </div>

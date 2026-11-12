@@ -126,3 +126,27 @@ export function nextToggleStatus(current: ResolvedDay): WorkStatus | null {
   if (current.status === "vacation" || current.status === "sick") return null;
   return current.status === "office" ? "remote" : "office";
 }
+
+/**
+ * Csapatnap-tipp: az a munkanap, amikor a legtöbben lesztek bent.
+ * `fromISO` esetén csak az aznapi és későbbi napokat nézi (ha van ilyen a tartományban).
+ * Döntetlennél a korábbi nap nyer; ha senki sincs bent, null.
+ */
+export function bestOfficeDay(
+  matrix: ResolvedMatrix,
+  days: string[],
+  fromISO?: string,
+): { day: string; count: number } | null {
+  const weekdays = days.filter((d) => {
+    const dow = getDay(parseISODate(d));
+    return dow >= 1 && dow <= 5;
+  });
+  const upcoming = fromISO ? weekdays.filter((d) => d >= fromISO) : weekdays;
+  const pool = upcoming.length > 0 ? upcoming : weekdays;
+  let best: { day: string; count: number } | null = null;
+  for (const day of pool) {
+    const count = countOffice(matrix, day);
+    if (count > 0 && (!best || count > best.count)) best = { day, count };
+  }
+  return best;
+}

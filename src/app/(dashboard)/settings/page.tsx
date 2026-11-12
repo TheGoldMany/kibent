@@ -39,8 +39,8 @@ export default async function SettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <div>
-        <h1 className="font-display text-4xl font-bold leading-none sm:text-5xl">Beállítások</h1>
-        <p className="mt-2 text-[15px]">Profil, heti rutin, naptár szinkron{isAdmin && " és cégbeállítások"}.</p>
+        <h1 className="font-display text-5xl font-bold leading-none sm:text-6xl">Beállítások</h1>
+        <p className="mt-3 text-lg">Profil, heti rutin, naptár szinkron{isAdmin && " és cégbeállítások"}.</p>
       </div>
 
       <Section icon={User} title="Profil" description="A neved így jelenik meg a kollégáid naptárában.">

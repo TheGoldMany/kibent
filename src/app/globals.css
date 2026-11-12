@@ -34,6 +34,19 @@
 
   html {
     -webkit-text-size-adjust: 100%;
+    font-size: 16px;
+  }
+
+  /* Nagy kijelzőn az egész felület arányosan nő (minden méret rem-alapú). */
+  @media (min-width: 1280px) {
+    html {
+      font-size: 17px;
+    }
+  }
+  @media (min-width: 1600px) {
+    html {
+      font-size: 18px;
+    }
   }
 
   body {
@@ -76,6 +89,14 @@
       repeating-linear-gradient(-60deg, rgb(0 0 0 / 0.05) 0 1.5px, transparent 1.5px 6px);
   }
 
+  /* Futó szalag (marquee): két egyforma sáv, végtelenítve */
+  .marquee-track {
+    animation: marquee 38s linear infinite;
+  }
+  .marquee:hover .marquee-track {
+    animation-play-state: paused;
+  }
+
   /* Bodoni címek optikai mérethez igazítva */
   .font-display {
     font-optical-sizing: auto;
@@ -89,7 +110,19 @@
   }
 }
 
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none !important;
+  }
   *,
   *::before,
   *::after {

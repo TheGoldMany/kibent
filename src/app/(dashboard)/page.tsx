@@ -67,8 +67,8 @@ export default async function DashboardPage({
 
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-4xl font-bold leading-none sm:text-5xl">Csapatnaptár</h1>
-          <p className="mt-2 text-[15px]">Ki van bent, ki dolgozik otthonról, és ki van szabadságon.</p>
+          <h1 className="font-display text-5xl font-bold leading-none sm:text-6xl">Csapatnaptár</h1>
+          <p className="mt-3 text-lg">Ki van bent, ki dolgozik otthonról, és ki van szabadságon.</p>
         </div>
         <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
           <RecurringPatternModal initial={myPattern} />

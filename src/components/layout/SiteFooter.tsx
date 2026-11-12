@@ -23,7 +23,7 @@ function LundaLink({ className }: { className?: string }) {
 export function SlimFooter() {
   return (
     <footer className="border-t-2 border-ink bg-white">
-      <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-3 px-3 py-4 text-sm sm:px-4">
+      <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-3 py-5 text-sm sm:px-6 lg:px-10">
         <p>
           <span className="font-display text-base font-bold italic">Kibent</span>, csapatnaptár hibrid csapatoknak
         </p>
@@ -40,7 +40,7 @@ export function SiteFooter({ links }: { links: { href: string; label: string }[]
   const year = new Date().getFullYear();
   return (
     <footer className="overflow-hidden border-t-2 border-ink bg-ink text-cotton">
-      <div className="mx-auto grid max-w-6xl gap-12 px-4 pb-10 pt-16 sm:px-6 md:grid-cols-[1.3fr_0.7fr_1fr]">
+      <div className="mx-auto grid max-w-[1440px] gap-12 px-5 pb-12 pt-20 sm:px-8 md:grid-cols-[1.3fr_0.7fr_1fr] lg:px-12">
         <div className="space-y-5">
           <Link
             href="/login"
@@ -91,7 +91,7 @@ export function SiteFooter({ links }: { links: { href: string; label: string }[]
         </div>
       </div>
 
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 border-t border-cotton/25 px-4 py-5 text-sm text-cotton/80 sm:px-6">
+      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 border-t border-cotton/25 px-5 py-6 text-sm text-cotton/80 sm:px-8 lg:px-12">
         <p>© {year} Kibent. Ingyenes csapatnaptár hibrid és remote csapatoknak.</p>
       </div>
 

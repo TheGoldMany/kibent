@@ -101,3 +101,26 @@ export function rangeTitle(view: ViewMode, start: string, end: string): string {
   }
   return formatRangeHu(start, end);
 }
+
+const DAY_ON_HU = ["vasárnap", "hétfőn", "kedden", "szerdán", "csütörtökön", "pénteken", "szombaton"] as const;
+
+/** „csütörtökön” – a nap neve határozóragos alakban. */
+export function weekdayOnHu(value: string): string {
+  return DAY_ON_HU[parseISODate(value).getDay()]!;
+}
+
+/** Hónap napja „-án/-én/-jén” raggal: 1-jén, 2-án, 4-én, 10-én, 20-án … */
+export function dayOfMonthOnHu(day: number): string {
+  if (day === 10) return "10-én";
+  if (day === 20 || day === 30) return `${day}-án`;
+  const last = day % 10;
+  if (last === 1) return `${day}-jén`;
+  return [2, 3, 6, 8].includes(last) ? `${day}-án` : `${day}-én`;
+}
+
+/** „nov. 19-én, csütörtökön” vagy csak „csütörtökön”. */
+export function dayPhraseHu(value: string, withDate: boolean): string {
+  if (!withDate) return weekdayOnHu(value);
+  const d = parseISODate(value);
+  return `${format(d, "MMM", { locale: hu })} ${dayOfMonthOnHu(d.getDate())}, ${weekdayOnHu(value)}`;
+}

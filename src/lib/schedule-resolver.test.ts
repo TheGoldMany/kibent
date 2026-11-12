@@ -202,3 +202,43 @@ describe("iCal feed", () => {
     expect(ics.match(/BEGIN:VEVENT/g)).toHaveLength(4);
   });
 });
+
+import { bestOfficeDay } from "./schedule-resolver";
+import { dayOfMonthOnHu, dayPhraseHu, weekdayOnHu } from "./dates";
+
+describe("csapatnap-tipp", () => {
+  const days = ["2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19", "2026-11-20", "2026-11-21"];
+  const m = buildMatrix(
+    ["a", "b", "c"],
+    days,
+    [],
+    [
+      { user_id: "a", mon: "office", tue: "office", wed: null, thu: "office", fri: null },
+      { user_id: "b", mon: null, tue: "office", wed: null, thu: "office", fri: null },
+      { user_id: "c", mon: null, tue: "remote", wed: null, thu: "office", fri: null },
+    ],
+  );
+  it("a legtöbb irodai nap nyer", () => {
+    expect(bestOfficeDay(m, days)).toEqual({ day: "2026-11-19", count: 3 });
+  });
+  it("csak a mai és későbbi napokat nézi", () => {
+    expect(bestOfficeDay(m, days, "2026-11-20")).toBeNull();
+    expect(bestOfficeDay(m, days, "2026-11-17")).toEqual({ day: "2026-11-19", count: 3 });
+  });
+});
+
+describe("magyar dátumragok", () => {
+  it("napnév határozóragos alakban", () => {
+    expect(weekdayOnHu("2026-11-19")).toBe("csütörtökön");
+    expect(weekdayOnHu("2026-11-22")).toBe("vasárnap");
+  });
+  it("hónap napja raggal", () => {
+    expect([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 20, 21, 30, 31].map(dayOfMonthOnHu)).toEqual([
+      "1-jén", "2-án", "3-án", "4-én", "5-én", "6-án", "7-én", "8-án", "9-én", "10-én", "11-jén", "20-án", "21-jén",
+      "30-án", "31-jén",
+    ]);
+  });
+  it("teljes kifejezés", () => {
+    expect(dayPhraseHu("2026-11-19", true)).toBe("nov. 19-én, csütörtökön");
+  });
+});

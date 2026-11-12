@@ -74,8 +74,8 @@ export default async function RequestsPage() {
     <div className="space-y-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-4xl font-bold leading-none sm:text-5xl">Kérelmek</h1>
-          <p className="mt-2 text-[15px]">
+          <h1 className="font-display text-5xl font-bold leading-none sm:text-6xl">Kérelmek</h1>
+          <p className="mt-3 text-lg">
             {isAdmin ? "Szabadságkérelmek elbírálása és a csapat távollétei." : "Szabadságkérelmeid és betegszabadságaid."}
           </p>
         </div>
