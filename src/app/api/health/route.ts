@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withSystem } from "@/lib/db";
+import { hasV2Schema } from "@/lib/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,8 @@ export async function GET() {
         region: process.env.VERCEL_REGION ?? "local",
         dbRoundTripMs: Math.round(sorted[1]!),
         dbConnectMs: Math.round(timings.connectMs),
+        // Le van-e futtatva a 0002-es migráció (munkaidő, ebédszünet, meghívók)
+        schema: (await hasV2Schema()) ? "v2" : "v1",
       },
       { headers: { "Cache-Control": "no-store" } },
     );
