@@ -1,19 +1,38 @@
 import Link from "next/link";
+import { KibentMark } from "@/components/brand/KibentMark";
 import { cn } from "@/lib/utils";
 
-/** Szómárka: Bodoni dőlt „Kibent” egy enyhén elforgatott vaj sárga matricán. */
-export function Logo({ className, href = "/", size = "md" }: { className?: string; href?: string; size?: "md" | "lg" }) {
+/** Logó: a matrica-jel és a Bodoni dőlt „Kibent” szómárka. */
+export function Logo({
+  className,
+  href = "/",
+  size = "md",
+  variant = "light",
+}: {
+  className?: string;
+  href?: string;
+  size?: "md" | "lg";
+  variant?: "light" | "dark";
+}) {
   return (
     <Link
       href={href}
       aria-label="Kibent – kezdőlap"
-      className={cn(
-        "inline-flex -rotate-2 items-center rounded-full border-2 border-ink bg-butter font-display font-bold italic leading-none text-ink shadow-brutal-xs transition-transform hover:rotate-0",
-        size === "lg" ? "px-5 py-2 text-3xl" : "px-3.5 py-1.5 text-xl",
-        className,
-      )}
+      className={cn("group inline-flex items-center gap-2 leading-none", className)}
     >
-      Kibent
+      <KibentMark
+        variant={variant}
+        className={cn("transition-transform group-hover:rotate-6", size === "lg" ? "h-12 w-12" : "h-10 w-10")}
+      />
+      <span
+        className={cn(
+          "font-display font-bold italic tracking-tight",
+          size === "lg" ? "text-[2.1rem]" : "text-[1.7rem]",
+          variant === "dark" ? "text-cotton" : "text-ink",
+        )}
+      >
+        Kibent
+      </span>
     </Link>
   );
 }
