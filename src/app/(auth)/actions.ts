@@ -22,6 +22,11 @@ function authErrorHu(message: string | undefined): string {
   if (/email not confirmed/i.test(message)) return "Előbb erősítsd meg az email címed a kiküldött linkkel.";
   if (/already (registered|exists)/i.test(message)) return "Ezzel az email címmel már regisztráltak. Jelentkezz be!";
   if (/rate limit|too many/i.test(message)) return "Túl sok próbálkozás. Várj egy kicsit, és próbáld újra.";
+  if (/invalid origin|untrusted origin/i.test(message)) {
+    // Beállítási hiba: az oldal címe nincs a Neon Auth megbízható domainjei között.
+    console.error("[auth] Invalid origin – vedd fel a NEXT_PUBLIC_SITE_URL-t a Neon Auth Trusted domains listájára.");
+    return "A belépés erről a címről még nincs engedélyezve. Az üzemeltetőnek fel kell vennie a domaint a Neon Auth beállításaiban.";
+  }
   return message;
 }
 
