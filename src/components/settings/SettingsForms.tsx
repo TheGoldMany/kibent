@@ -99,7 +99,15 @@ function LinkRow({ label, url }: { label: string; url: string }) {
   );
 }
 
-export function CompanyForm({ name, lunchMinutes }: { name: string; lunchMinutes: number }) {
+export function CompanyForm({
+  name,
+  lunchMinutes,
+  lunchEnabled = true,
+}: {
+  name: string;
+  lunchMinutes: number;
+  lunchEnabled?: boolean;
+}) {
   const [state, action] = useActionState(updateCompanyNameAction, null);
   const [lunchState, lunchAction] = useActionState(updateLunchMinutesAction, null);
   return (
@@ -117,6 +125,7 @@ export function CompanyForm({ name, lunchMinutes }: { name: string; lunchMinutes
         <FormMessage state={state} />
       </form>
 
+      {lunchEnabled && (
       <form action={lunchAction} className="space-y-3">
         <fieldset className="space-y-2">
           <legend className="text-sm font-semibold">Ebédszünet hossza</legend>
@@ -140,6 +149,7 @@ export function CompanyForm({ name, lunchMinutes }: { name: string; lunchMinutes
           Ebédszünet mentése
         </SubmitButton>
       </form>
+      )}
     </div>
   );
 }

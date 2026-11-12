@@ -3,6 +3,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { getAuth } from "@/lib/auth/server";
 import { withUser } from "@/lib/db";
+import { hasV2Schema } from "@/lib/schema";
 import type { Company, Profile } from "@/lib/database.types";
 
 export type SessionContext = {
@@ -39,7 +40,9 @@ const SESSION_SQL = `
   select row_to_json(p) as profile,
          case when c.id is null then null
               else json_build_object('id', c.id, 'name', c.name, 'invite_code', c.invite_code,
-                                     'lunch_minutes', c.lunch_minutes, 'created_at', c.created_at)
+                                     -- to_jsonb: a 0002-es migráció előtt is működik (alapérték 30)
+                                     'lunch_minutes', coalesce((to_jsonb(c) ->> 'lunch_minutes')::int, 30),
+                                     'created_at', c.created_at)
          end as company,
          case when p.role = 'admin' and p.company_id is not null then (
            select count(distinct coalesce(s.request_group_id::text, s.user_id::text))::int
@@ -67,7 +70,7 @@ export const getSessionContext = cache(async (): Promise<SessionContext | null> 
     }
     if (!row) return null;
     // Még nincs cég, de a (megerősített) email címre nyitott meghívó szól: automatikus csatlakozás.
-    if (!row.company && user.emailVerified) {
+    if (!row.company && user.emailVerified && (await hasV2Schema())) {
       const joined = await tx.one<{ company_id: string | null }>("select public.accept_pending_invitation() as company_id");
       if (joined?.company_id) row = (await tx.one<SessionRow>(SESSION_SQL, [userId])) ?? row;
     }

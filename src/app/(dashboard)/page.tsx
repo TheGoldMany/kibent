@@ -7,6 +7,7 @@ import { RecurringPatternModal } from "@/components/calendar/RecurringPatternMod
 import { LeaveRequestModal } from "@/components/calendar/LeaveRequestModal";
 import { requireMember } from "@/lib/auth";
 import { withUser } from "@/lib/db";
+import { hasV2Schema } from "@/lib/schema";
 import type { PatternDays, ScheduleLike } from "@/lib/schedule-resolver";
 import type { Role, WorkHours } from "@/lib/database.types";
 import { getRange, isISODate, nowMinutesBudapest, todayISO, VIEW_MODES, type ViewMode } from "@/lib/dates";
@@ -25,6 +26,7 @@ export default async function DashboardPage({
   const anchor = isISODate(params.date) ? params.date : today;
   const { start, end, days } = getRange(view, anchor);
 
+  const v2 = await hasV2Schema();
   // Egyetlen adatbázis-kör: tagok, heti rutinok és az időszak bejegyzései JSON-ként.
   const data = await withUser(ctx.userId, (tx) =>
     tx.one<{
@@ -43,9 +45,13 @@ export default async function DashboardPage({
                                                      'approval_status', approval_status,
                                                      'request_group_id', request_group_id, 'note', note))
                      from schedules where company_id = $1 and date between $2 and $3), '[]') as schedules,
-         coalesce((select json_agg(json_build_object('user_id', user_id, 'weekday', weekday, 'start_time', start_time,
+         ${
+           v2
+             ? `coalesce((select json_agg(json_build_object('user_id', user_id, 'weekday', weekday, 'start_time', start_time,
                                                      'end_time', end_time, 'lunch_start', lunch_start))
-                     from work_hours where company_id = $1), '[]') as work_hours`,
+                     from work_hours where company_id = $1), '[]')`
+             : "'[]'::json"
+         } as work_hours`,
       [ctx.company.id, start, end],
     ),
   );

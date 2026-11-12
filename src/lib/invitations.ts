@@ -1,5 +1,6 @@
 import "server-only";
 import { withSystem } from "@/lib/db";
+import { hasV2Schema } from "@/lib/schema";
 import { uuidSchema } from "@/lib/validations";
 
 export type InvitePreview = {
@@ -18,6 +19,7 @@ export type InvitePreview = {
  */
 export async function getInvitePreview(token: string): Promise<InvitePreview | null> {
   if (!uuidSchema.safeParse(token).success) return null;
+  if (!(await hasV2Schema())) return null;
   const row = await withSystem((db) =>
     db.one<{
       email: string;

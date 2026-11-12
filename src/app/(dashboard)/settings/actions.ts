@@ -5,6 +5,7 @@ import { requireAdmin, requireMember } from "@/lib/auth";
 import { getAuth } from "@/lib/auth/server";
 import { dbErrorMessage, withUser } from "@/lib/db";
 import { isEmailConfigured, sendInvitationEmail } from "@/lib/email";
+import { hasV2Schema, SCHEMA_PENDING_MESSAGE } from "@/lib/schema";
 import { siteUrl } from "@/lib/utils";
 import {
   companyNameSchema,
@@ -90,6 +91,7 @@ export async function removeMemberAction(userId: string): Promise<Result> {
 
 export async function saveWorkHoursAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const ctx = await requireMember();
+  if (!(await hasV2Schema())) return { error: SCHEMA_PENDING_MESSAGE };
   const days: WorkDayInput[] = [1, 2, 3, 4, 5].map((weekday) => ({
     weekday,
     enabled: formData.get(`d${weekday}_enabled`) === "on",
@@ -132,6 +134,7 @@ export async function updateLunchMinutesAction(_prev: FormState, formData: FormD
   if (!parsed.success) return { error: firstError(parsed.error) };
 
   const ctx = await requireAdmin();
+  if (!(await hasV2Schema())) return { error: SCHEMA_PENDING_MESSAGE };
   const res = await run(ctx.userId, "update companies set lunch_minutes = $1 where id = $2", [
     parsed.data.minutes,
     ctx.company.id,
@@ -167,6 +170,7 @@ export async function sendInvitationsAction(_prev: InviteState, formData: FormDa
   }
 
   const ctx = await requireAdmin();
+  if (!(await hasV2Schema())) return { error: SCHEMA_PENDING_MESSAGE };
   let created: { email: string; token: string; member: boolean }[];
   try {
     created = await withUser(ctx.userId, async (tx) => {

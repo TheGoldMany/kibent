@@ -8,6 +8,7 @@ import { InviteForm } from "@/components/invites/InviteForm";
 import { InvitationList } from "@/components/invites/InvitationList";
 import { requireMember } from "@/lib/auth";
 import { withUser } from "@/lib/db";
+import { hasV2Schema, SCHEMA_PENDING_MESSAGE } from "@/lib/schema";
 import type { CompanyInvitation, Role, WorkHours } from "@/lib/database.types";
 import type { PatternDays } from "@/lib/schedule-resolver";
 import { siteUrl } from "@/lib/utils";
@@ -17,6 +18,7 @@ export const metadata: Metadata = { title: "Beállítások" };
 export default async function SettingsPage() {
   const ctx = await requireMember();
   const isAdmin = ctx.profile.role === "admin";
+  const v2 = await hasV2Schema();
   // Egyetlen adatbázis-kör
   const data = await withUser(ctx.userId, (tx) =>
     tx.one<{
@@ -30,14 +32,18 @@ export default async function SettingsPage() {
             from recurring_patterns where user_id = $1) as pattern,
          coalesce((select json_agg(json_build_object('id', id, 'full_name', full_name, 'email', email, 'role', role))
                      from profiles where $3 and company_id = $2), '[]') as members,
-         coalesce((select json_agg(json_build_object('user_id', user_id, 'weekday', weekday, 'start_time', start_time,
+         ${
+           v2
+             ? `coalesce((select json_agg(json_build_object('user_id', user_id, 'weekday', weekday, 'start_time', start_time,
                                                      'end_time', end_time, 'lunch_start', lunch_start) order by weekday)
                      from work_hours where user_id = $1), '[]') as work_hours,
          -- RLS: csak admin látja (member esetén üres)
          coalesce((select json_agg(json_build_object('id', id, 'email', email, 'token', token, 'created_at', created_at,
                                                      'expires_at', expires_at, 'accepted_at', accepted_at)
                                    order by created_at desc)
-                     from company_invitations where $3 and company_id = $2 and accepted_at is null), '[]') as invitations`,
+                     from company_invitations where $3 and company_id = $2 and accepted_at is null), '[]') as invitations`
+             : `'[]'::json as work_hours, '[]'::json as invitations`
+         }`,
       [ctx.userId, ctx.company.id, isAdmin],
     ),
   );
@@ -75,7 +81,7 @@ export default async function SettingsPage() {
         title="Munkaidő és ebédszünet"
         description="Mikor dolgozol, és mikor ebédelsz. A kollégák a naptárban látják, ha éppen ebédszüneten vagy."
       >
-        <WorkHoursForm initial={workHours} lunchMinutes={ctx.company.lunch_minutes} />
+        {v2 ? <WorkHoursForm initial={workHours} lunchMinutes={ctx.company.lunch_minutes} /> : <Pending />}
       </Section>
 
       <Section
@@ -111,13 +117,14 @@ export default async function SettingsPage() {
       {isAdmin && (
         <>
           <Section icon={Building2} title="Cégbeállítások" description="Cégnév és az ebédszünet hossza.">
-            <CompanyForm name={ctx.company.name} lunchMinutes={ctx.company.lunch_minutes} />
+            <CompanyForm name={ctx.company.name} lunchMinutes={ctx.company.lunch_minutes} lunchEnabled={v2} />
           </Section>
           <Section
             icon={MailPlus}
             title="Meghívások"
             description="A meghívott kollégák a levélben kapott linkkel regisztrálnak, és belépés után automatikusan a csapatban lesznek."
           >
+            {v2 ? (
             <div className="space-y-8">
               <InviteForm />
               <div className="space-y-3">
@@ -125,6 +132,9 @@ export default async function SettingsPage() {
                 <InvitationList invitations={invitations} baseUrl={base} />
               </div>
             </div>
+            ) : (
+              <Pending />
+            )}
           </Section>
           <Section icon={Users} title={`Tagok (${members.length})`} description="Szerepkörök és tagság kezelése.">
             <MemberList members={members} currentUserId={ctx.userId} />
@@ -165,5 +175,11 @@ function Guide({ title, children }: { title: string; children: React.ReactNode }
       <p className="mb-2 font-display text-lg font-semibold italic">{title}</p>
       <ol className="list-decimal space-y-1 pl-4">{children}</ol>
     </div>
+  );
+}
+
+function Pending() {
+  return (
+    <p className="rounded-xl border-2 border-dashed border-ink bg-butter/40 px-4 py-3 text-sm">{SCHEMA_PENDING_MESSAGE}</p>
   );
 }
