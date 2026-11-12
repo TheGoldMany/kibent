@@ -5,9 +5,11 @@ import { Logo } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSessionContext } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { dbErrorMessage, withUser } from "@/lib/db";
 import { inviteCodeSchema } from "@/lib/validations";
-import { friendlyError } from "@/lib/utils";
+
+// Session-függő oldalak: mindig kérésidőben renderelődnek (Neon Auth).
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Meghívó" };
 
@@ -19,27 +21,8 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
   const ctx = await getSessionContext();
   if (!ctx) redirect(`/login?next=${encodeURIComponent(`/invite/${rawCode}`)}`);
 
-  let error: string | null = code ? null : "Érvénytelen meghívó link.";
-  let companyName: string | null = null;
-
-  if (code) {
-    const supabase = await createClient();
-    const { data: name } = await supabase.rpc("preview_invite", { code });
-    companyName = name ?? null;
-
-    if (!companyName) {
-      error = "Ez a meghívó link érvénytelen vagy lejárt. Kérj újat a céged adminisztrátorától.";
-    } else if (ctx.company && ctx.company.name !== companyName) {
-      error = `Már a(z) „${ctx.company.name}” cég tagja vagy. Egy fiók egyszerre csak egy céghez tartozhat.`;
-    } else {
-      const { error: joinError } = await supabase.rpc("join_company", { code });
-      if (joinError) {
-        error = friendlyError(joinError);
-      } else {
-        redirect("/?welcome=1");
-      }
-    }
-  }
+  const error = code ? await tryJoin(ctx.userId, code, ctx.company?.name ?? null) : "Érvénytelen meghívó link.";
+  if (error === null) redirect("/?welcome=1");
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-indigo-50 to-background p-4">
@@ -57,4 +40,22 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
       </Card>
     </main>
   );
+}
+
+/** Csatlakozás a meghívókóddal. null = sikeres, egyébként a hibaüzenet. */
+async function tryJoin(userId: string, code: string, currentCompany: string | null): Promise<string | null> {
+  try {
+    return await withUser(userId, async (tx) => {
+      const row = await tx.one<{ name: string | null }>("select public.preview_invite($1) as name", [code]);
+      const companyName = row?.name ?? null;
+      if (!companyName) return "Ez a meghívó link érvénytelen vagy lejárt. Kérj újat a céged adminisztrátorától.";
+      if (currentCompany && currentCompany !== companyName) {
+        return `Már a(z) „${currentCompany}” cég tagja vagy. Egy fiók egyszerre csak egy céghez tartozhat.`;
+      }
+      await tx.query("select public.join_company($1)", [code]);
+      return null;
+    });
+  } catch (e) {
+    return dbErrorMessage(e);
+  }
 }

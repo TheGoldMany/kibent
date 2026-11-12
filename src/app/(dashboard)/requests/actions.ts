@@ -1,10 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
 import { requireAdmin, requireMember, type MemberContext } from "@/lib/auth";
+import { deletePrivate, signedReadUrl, uploadPrivate } from "@/lib/blob";
+import { dbErrorMessage, withUser } from "@/lib/db";
 import { todayISO, workdaysBetween } from "@/lib/dates";
-import { friendlyError } from "@/lib/utils";
 import {
   firstError,
   leaveRequestSchema,
@@ -15,7 +15,6 @@ import {
 } from "@/lib/validations";
 import type { FormState } from "@/components/ui/form-message";
 
-const BUCKET = "medical-docs";
 const SIGNED_URL_TTL_SECONDS = 60;
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -34,26 +33,24 @@ async function uploadMedicalDoc(ctx: MemberContext, groupId: string, file: File)
   const validationError = validateUpload(file);
   if (validationError) return validationError;
 
-  const supabase = await createClient();
   // Útvonal: {company_id}/{user_id}/{request_group_id}/{uuid}-{fájlnév}
   const path = `${ctx.company.id}/${ctx.userId}/${groupId}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from(BUCKET)
-    .upload(path, file, { contentType: file.type, upsert: false });
-  if (uploadError) return `A fájl feltöltése nem sikerült: ${uploadError.message}`;
-
-  const { error: insertError } = await supabase.from("medical_documents").insert({
-    company_id: ctx.company.id,
-    user_id: ctx.userId,
-    request_group_id: groupId,
-    storage_path: path,
-    file_name: file.name.slice(0, 200),
-    mime_type: file.type as "application/pdf" | "image/jpeg" | "image/png",
-  });
-  if (insertError) {
-    await supabase.storage.from(BUCKET).remove([path]);
-    return friendlyError(insertError);
+  // Előbb a metaadat (RLS ellenőrzi: saját betegszabadság), csak utána a fájl.
+  try {
+    await withUser(ctx.userId, async (tx) => {
+      await tx.query(
+        `insert into medical_documents (company_id, user_id, request_group_id, storage_path, file_name, mime_type)
+         values ($1, $2, $3, $4, $5, $6)`,
+        [ctx.company.id, ctx.userId, groupId, path, file.name.slice(0, 200), file.type],
+      );
+      // Ha a feltöltés elbukik, a kivétel visszagörgeti a metaadatot is.
+      await uploadPrivate(path, file);
+    });
+  } catch (error) {
+    if ((error as { code?: string })?.code) return dbErrorMessage(error);
+    console.error("[blob] upload", error);
+    return "A fájl feltöltése nem sikerült. Próbáld újra később.";
   }
   return null;
 }
@@ -75,44 +72,45 @@ export async function createLeaveRequestAction(_prev: FormState, formData: FormD
   }
 
   const ctx = await requireMember();
-  const supabase = await createClient();
   const { type, startDate, endDate, note } = parsed.data;
   const days = workdaysBetween(startDate, endDate);
-
-  // Ütközés meglévő (nem elutasított) szabadsággal / betegszabadsággal
-  const { data: conflicts, error: conflictError } = await supabase
-    .from("schedules")
-    .select("date")
-    .eq("user_id", ctx.userId)
-    .in("date", days)
-    .in("status", ["vacation", "sick"])
-    .neq("approval_status", "rejected")
-    .order("date")
-    .limit(1);
-  if (conflictError) return { error: friendlyError(conflictError) };
-  if (conflicts.length > 0) {
-    return {
-      error: `Az időszak ütközik egy meglévő kérelmeddel (${conflicts[0]!.date}). Előbb vond vissza azt a Kérelmek oldalon.`,
-    };
-  }
 
   const isAdmin = ctx.profile.role === "admin";
   const approval = type === "sick" || isAdmin ? "approved" : "pending";
   const groupId = crypto.randomUUID();
 
-  const { error } = await supabase.from("schedules").upsert(
-    days.map((date) => ({
-      company_id: ctx.company.id,
-      user_id: ctx.userId,
-      date,
-      status: type,
-      approval_status: approval,
-      request_group_id: groupId,
-      note,
-    })),
-    { onConflict: "user_id,date" },
-  );
-  if (error) return { error: friendlyError(error) };
+  let conflict: string | null = null;
+  try {
+    await withUser(ctx.userId, async (tx) => {
+      // Ütközés meglévő (nem elutasított) szabadsággal / betegszabadsággal
+      const hit = await tx.one<{ date: string }>(
+        `select date from schedules
+          where user_id = $1 and date = any($2::date[])
+            and status in ('vacation', 'sick') and approval_status <> 'rejected'
+          order by date limit 1`,
+        [ctx.userId, days],
+      );
+      if (hit) {
+        conflict = hit.date;
+        return;
+      }
+      await tx.query(
+        `insert into schedules (company_id, user_id, date, status, approval_status, request_group_id, note)
+         select $1, $2, d, $4, $5, $6, $7 from unnest($3::date[]) as d
+         on conflict (user_id, date) do update
+           set status = excluded.status, approval_status = excluded.approval_status,
+               request_group_id = excluded.request_group_id, note = excluded.note`,
+        [ctx.company.id, ctx.userId, days, type, approval, groupId, note],
+      );
+    });
+  } catch (error) {
+    return { error: dbErrorMessage(error) };
+  }
+  if (conflict) {
+    return {
+      error: `Az időszak ütközik egy meglévő kérelmeddel (${conflict}). Előbb vond vissza azt a Kérelmek oldalon.`,
+    };
+  }
 
   let uploadWarning: string | null = null;
   if (file) uploadWarning = await uploadMedicalDoc(ctx, groupId, file);
@@ -135,17 +133,21 @@ export async function reviewRequestAction(groupId: string, decision: "approved" 
   if (!parsed.success) return { ok: false, error: firstError(parsed.error) };
 
   const ctx = await requireAdmin();
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("schedules")
-    .update({ approval_status: parsed.data.decision })
-    .eq("company_id", ctx.company.id)
-    .eq("request_group_id", parsed.data.groupId)
-    .eq("status", "vacation")
-    .eq("approval_status", "pending")
-    .select("id");
-  if (error) return { ok: false, error: friendlyError(error) };
-  if (!data || data.length === 0) return { ok: false, error: "A kérelmet már elbírálták vagy visszavonták." };
+  let updated: { id: string }[] = [];
+  try {
+    updated = await withUser(ctx.userId, (tx) =>
+      tx.query<{ id: string }>(
+        `update schedules set approval_status = $1
+          where company_id = $2 and request_group_id = $3
+            and status = 'vacation' and approval_status = 'pending'
+          returning id`,
+        [parsed.data.decision, ctx.company.id, parsed.data.groupId],
+      ),
+    );
+  } catch (error) {
+    return { ok: false, error: dbErrorMessage(error) };
+  }
+  if (updated.length === 0) return { ok: false, error: "A kérelmet már elbírálták vagy visszavonták." };
 
   revalidateAll();
   return { ok: true };
@@ -156,37 +158,31 @@ export async function cancelRequestAction(groupId: string): Promise<Result> {
   if (!parsedId.success) return { ok: false, error: firstError(parsedId.error) };
 
   const ctx = await requireMember();
-  const supabase = await createClient();
+  type Outcome = { error: string } | { paths: string[] };
+  let outcome: Outcome;
+  try {
+    outcome = await withUser(ctx.userId, async (tx): Promise<Outcome> => {
+      const rows = await tx.query<{ date: string; approval_status: string }>(
+        "select date, approval_status from schedules where user_id = $1 and request_group_id = $2 for update",
+        [ctx.userId, parsedId.data],
+      );
+      if (rows.length === 0) return { error: "A kérelem nem található." };
+      const lastDay = rows.reduce((max, r) => (r.date > max ? r.date : max), rows[0]!.date);
+      const isPending = rows.some((r) => r.approval_status === "pending");
+      if (lastDay < todayISO() && !isPending) return { error: "Lezárult távollét már nem vonható vissza." };
 
-  const { data: rows } = await supabase
-    .from("schedules")
-    .select("date, approval_status")
-    .eq("user_id", ctx.userId)
-    .eq("request_group_id", parsedId.data);
-  if (!rows || rows.length === 0) return { ok: false, error: "A kérelem nem található." };
-  const lastDay = rows.reduce((max, r) => (r.date > max ? r.date : max), rows[0]!.date);
-  const isPending = rows.some((r) => r.approval_status === "pending");
-  if (lastDay < todayISO() && !isPending) {
-    return { ok: false, error: "Lezárult távollét már nem vonható vissza." };
+      const docs = await tx.query<{ storage_path: string }>(
+        "delete from medical_documents where request_group_id = $1 and user_id = $2 returning storage_path",
+        [parsedId.data, ctx.userId],
+      );
+      await tx.query("delete from schedules where user_id = $1 and request_group_id = $2", [ctx.userId, parsedId.data]);
+      return { paths: docs.map((d) => d.storage_path) };
+    });
+  } catch (error) {
+    return { ok: false, error: dbErrorMessage(error) };
   }
-
-  const { data: docs } = await supabase
-    .from("medical_documents")
-    .select("id, storage_path")
-    .eq("request_group_id", parsedId.data)
-    .eq("user_id", ctx.userId);
-
-  if (docs && docs.length > 0) {
-    await supabase.storage.from(BUCKET).remove(docs.map((d) => d.storage_path));
-    await supabase.from("medical_documents").delete().in("id", docs.map((d) => d.id));
-  }
-
-  const { error } = await supabase
-    .from("schedules")
-    .delete()
-    .eq("user_id", ctx.userId)
-    .eq("request_group_id", parsedId.data);
-  if (error) return { ok: false, error: friendlyError(error) };
+  if ("error" in outcome) return { ok: false, error: outcome.error };
+  await deletePrivate(outcome.paths).catch((e) => console.error("[blob] delete", e));
 
   revalidateAll();
   return { ok: true };
@@ -199,15 +195,6 @@ export async function uploadMedicalDocAction(_prev: FormState, formData: FormDat
   if (!file) return { error: "Válassz ki egy fájlt." };
 
   const ctx = await requireMember();
-  const supabase = await createClient();
-  const { data: rows } = await supabase
-    .from("schedules")
-    .select("id")
-    .eq("user_id", ctx.userId)
-    .eq("request_group_id", parsedId.data)
-    .eq("status", "sick")
-    .limit(1);
-  if (!rows || rows.length === 0) return { error: "Igazolás csak saját betegszabadsághoz tölthető fel." };
 
   const uploadError = await uploadMedicalDoc(ctx, parsedId.data, file);
   if (uploadError) return { error: uploadError };
@@ -223,38 +210,44 @@ export async function getMedicalDocUrlAction(
   const parsedId = uuidSchema.safeParse(docId);
   if (!parsedId.success) return { ok: false, error: firstError(parsedId.error) };
 
-  await requireMember();
-  const supabase = await createClient();
-  const { data: doc } = await supabase
-    .from("medical_documents")
-    .select("storage_path, mime_type, file_name")
-    .eq("id", parsedId.data)
-    .maybeSingle();
+  const ctx = await requireMember();
+  // RLS: csak a feltöltő és a cég adminja kap vissza sort.
+  const doc = await withUser(ctx.userId, (tx) =>
+    tx.one<{ storage_path: string; mime_type: string; file_name: string }>(
+      "select storage_path, mime_type, file_name from medical_documents where id = $1",
+      [parsedId.data],
+    ),
+  );
   if (!doc) return { ok: false, error: "A dokumentum nem található, vagy nincs hozzá jogosultságod." };
 
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(doc.storage_path, SIGNED_URL_TTL_SECONDS);
-  if (error || !data) return { ok: false, error: "Nem sikerült megnyitni a dokumentumot." };
-
-  return { ok: true, url: data.signedUrl, mimeType: doc.mime_type, fileName: doc.file_name };
+  try {
+    const url = await signedReadUrl(doc.storage_path, SIGNED_URL_TTL_SECONDS);
+    return { ok: true, url, mimeType: doc.mime_type, fileName: doc.file_name };
+  } catch (error) {
+    console.error("[blob] presign", error);
+    return { ok: false, error: "Nem sikerült megnyitni a dokumentumot." };
+  }
 }
 
 export async function deleteMedicalDocAction(docId: string): Promise<Result> {
   const parsedId = uuidSchema.safeParse(docId);
   if (!parsedId.success) return { ok: false, error: firstError(parsedId.error) };
 
-  await requireMember();
-  const supabase = await createClient();
-  const { data: doc } = await supabase
-    .from("medical_documents")
-    .select("id, storage_path")
-    .eq("id", parsedId.data)
-    .maybeSingle();
-  if (!doc) return { ok: false, error: "A dokumentum nem található." };
-
-  const { error: storageError } = await supabase.storage.from(BUCKET).remove([doc.storage_path]);
-  if (storageError) return { ok: false, error: "Nem sikerült törölni a fájlt." };
-  const { error } = await supabase.from("medical_documents").delete().eq("id", doc.id);
-  if (error) return { ok: false, error: friendlyError(error) };
+  const ctx = await requireMember();
+  let path: string | null;
+  try {
+    path = await withUser(ctx.userId, async (tx) => {
+      const row = await tx.one<{ storage_path: string }>(
+        "delete from medical_documents where id = $1 returning storage_path",
+        [parsedId.data],
+      );
+      return row?.storage_path ?? null;
+    });
+  } catch (error) {
+    return { ok: false, error: dbErrorMessage(error) };
+  }
+  if (!path) return { ok: false, error: "A dokumentum nem található." };
+  await deletePrivate([path]).catch((e) => console.error("[blob] delete", e));
 
   revalidatePath("/requests");
   return { ok: true };

@@ -6,7 +6,9 @@ import { TeamMatrix } from "@/components/calendar/TeamMatrix";
 import { RecurringPatternModal } from "@/components/calendar/RecurringPatternModal";
 import { LeaveRequestModal } from "@/components/calendar/LeaveRequestModal";
 import { requireMember } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { withUser } from "@/lib/db";
+import type { PatternDays, ScheduleLike } from "@/lib/schedule-resolver";
+import type { Role } from "@/lib/database.types";
 import { getRange, isISODate, todayISO, VIEW_MODES, type ViewMode } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Csapatnaptár" };
@@ -23,30 +25,30 @@ export default async function DashboardPage({
   const anchor = isISODate(params.date) ? params.date : today;
   const { start, end, days } = getRange(view, anchor);
 
-  const supabase = await createClient();
-  const [membersRes, patternsRes, schedulesRes] = await Promise.all([
-    supabase.from("profiles").select("id, full_name, role").eq("company_id", ctx.company.id),
-    supabase
-      .from("recurring_patterns")
-      .select("user_id, mon, tue, wed, thu, fri")
-      .eq("company_id", ctx.company.id),
-    supabase
-      .from("schedules")
-      .select("user_id, date, status, approval_status, request_group_id, note")
-      .eq("company_id", ctx.company.id)
-      .gte("date", start)
-      .lte("date", end),
-  ]);
-
-  if (membersRes.error || patternsRes.error || schedulesRes.error) {
-    throw new Error("Nem sikerült betölteni a csapatnaptárat.");
-  }
+  const { members: rawMembers, patterns, schedules } = await withUser(ctx.userId, async (tx) => {
+    const [members, patterns, schedules] = await Promise.all([
+      tx.query<{ id: string; full_name: string; role: Role }>(
+        "select id, full_name, role from profiles where company_id = $1",
+        [ctx.company.id],
+      ),
+      tx.query<PatternDays & { user_id: string }>(
+        "select user_id, mon, tue, wed, thu, fri from recurring_patterns where company_id = $1",
+        [ctx.company.id],
+      ),
+      tx.query<ScheduleLike>(
+        `select user_id, date, status, approval_status, request_group_id, note
+           from schedules where company_id = $1 and date between $2 and $3`,
+        [ctx.company.id, start, end],
+      ),
+    ]);
+    return { members, patterns, schedules };
+  });
 
   const collator = new Intl.Collator("hu");
-  const members = [...membersRes.data].sort((a, b) =>
+  const members = [...rawMembers].sort((a, b) =>
     a.id === ctx.userId ? -1 : b.id === ctx.userId ? 1 : collator.compare(a.full_name, b.full_name),
   );
-  const myPattern = patternsRes.data.find((p) => p.user_id === ctx.userId) ?? null;
+  const myPattern = patterns.find((p) => p.user_id === ctx.userId) ?? null;
   const isAdmin = ctx.profile.role === "admin";
 
   return (
@@ -80,8 +82,8 @@ export default async function DashboardPage({
       <TeamMatrix
         members={members}
         days={days}
-        schedules={schedulesRes.data}
-        patterns={patternsRes.data}
+        schedules={schedules}
+        patterns={patterns}
         currentUserId={ctx.userId}
         isAdmin={isAdmin}
         today={today}

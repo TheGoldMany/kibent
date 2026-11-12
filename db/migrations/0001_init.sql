@@ -1,7 +1,42 @@
 -- =============================================================================
--- Kibent – kezdeti séma
--- Táblák, segédfüggvények, triggerek, Row Level Security, privát storage bucket
+-- Kibent – kezdeti séma (Neon Postgres + Neon Auth)
+-- Táblák, segédfüggvények, triggerek, Row Level Security
+--
+-- Jogosultsági modell:
+--  * A felhasználókat a Neon Auth kezeli a neon_auth."user" táblában.
+--  * Az alkalmazás minden felhasználói kérést egy tranzakcióban futtat:
+--      SET LOCAL ROLE kibent_app;
+--      SELECT set_config('app.user_id', '<uuid>', true);
+--    így minden lekérdezésre érvényesek az RLS szabályok (app.uid()).
+--  * A tábla-tulajdonos (neondb_owner) megkerüli az RLS-t – ezt kizárólag
+--    az iCal feed és a migrációk használják.
 -- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- 0. Alkalmazás szerepkör és app.uid()
+-- -----------------------------------------------------------------------------
+do $$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'kibent_app') then
+    create role kibent_app nologin;
+  end if;
+  -- A kapcsolódó (tulajdonos) szerepkör átválthasson kibent_app-ra.
+  execute format('grant kibent_app to %I', current_user);
+end
+$$;
+
+create schema if not exists app;
+grant usage on schema app to kibent_app;
+grant usage on schema public to kibent_app;
+
+create or replace function app.uid()
+returns uuid
+language sql
+stable
+as $$
+  select nullif(current_setting('app.user_id', true), '')::uuid;
+$$;
+grant execute on function app.uid() to kibent_app;
 
 -- -----------------------------------------------------------------------------
 -- 0. Segéd: meghívókód generálás (8 karakter, kriptográfiailag véletlen)
@@ -39,7 +74,7 @@ create table public.companies (
 );
 
 create table public.profiles (
-  id          uuid primary key references auth.users (id) on delete cascade,
+  id          uuid primary key references neon_auth."user" (id) on delete cascade,
   company_id  uuid references public.companies (id) on delete set null,
   email       text not null,
   full_name   text not null check (char_length(trim(full_name)) between 1 and 120),
@@ -111,7 +146,7 @@ stable
 security definer
 set search_path = ''
 as $$
-  select p.company_id from public.profiles p where p.id = auth.uid();
+  select p.company_id from public.profiles p where p.id = app.uid();
 $$;
 
 create or replace function public.is_company_admin()
@@ -123,7 +158,7 @@ set search_path = ''
 as $$
   select exists (
     select 1 from public.profiles p
-    where p.id = auth.uid()
+    where p.id = app.uid()
       and p.role = 'admin'
       and p.company_id is not null
   );
@@ -133,7 +168,7 @@ $$;
 -- 3. Triggerek
 -- -----------------------------------------------------------------------------
 
--- 3.1 Új auth felhasználó -> profil
+-- 3.1 Új Neon Auth felhasználó -> profil
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -146,21 +181,22 @@ begin
     new.id,
     coalesce(new.email, ''),
     coalesce(
-      nullif(trim(new.raw_user_meta_data ->> 'full_name'), ''),
+      nullif(trim(new.name), ''),
       nullif(split_part(coalesce(new.email, ''), '@', 1), ''),
       'Felhasználó'
     ),
-    new.raw_user_meta_data ->> 'avatar_url'
-  );
+    new.image
+  )
+  on conflict (id) do nothing;
   return new;
 end;
 $$;
 
 create trigger on_auth_user_created
-  after insert on auth.users
+  after insert on neon_auth."user"
   for each row execute function public.handle_new_user();
 
--- 3.2 Email szinkron, ha az auth felhasználó emailje változik
+-- 3.2 Email szinkron, ha a felhasználó emailje változik
 create or replace function public.handle_user_email_change()
 returns trigger
 language plpgsql
@@ -176,8 +212,16 @@ end;
 $$;
 
 create trigger on_auth_user_email_changed
-  after update of email on auth.users
+  after update of email on neon_auth."user"
   for each row execute function public.handle_user_email_change();
+
+-- Már létező Neon Auth felhasználók profiljai (ha a migráció később fut)
+insert into public.profiles (id, email, full_name, avatar_url)
+select u.id, coalesce(u.email, ''),
+       coalesce(nullif(trim(u.name), ''), nullif(split_part(coalesce(u.email, ''), '@', 1), ''), 'Felhasználó'),
+       u.image
+  from neon_auth."user" u
+on conflict (id) do nothing;
 
 -- 3.3 schedules védelem: mezők immutabilitása, jóváhagyási szabályok
 create or replace function public.schedules_guard()
@@ -187,7 +231,7 @@ security definer
 set search_path = ''
 as $$
 declare
-  uid uuid := auth.uid();
+  uid uuid := app.uid();
   caller_is_admin boolean := public.is_company_admin();
 begin
   -- Service role / belső hívás: nincs felhasználói kontextus
@@ -278,7 +322,7 @@ security definer
 set search_path = ''
 as $$
 declare
-  uid uuid := auth.uid();
+  uid uuid := app.uid();
   new_company_id uuid;
   attempts int := 0;
 begin
@@ -320,7 +364,7 @@ security definer
 set search_path = ''
 as $$
 declare
-  uid uuid := auth.uid();
+  uid uuid := app.uid();
   target_company uuid;
   current_company uuid;
 begin
@@ -401,7 +445,7 @@ security definer
 set search_path = ''
 as $$
 declare
-  uid uuid := auth.uid();
+  uid uuid := app.uid();
   new_token uuid := gen_random_uuid();
 begin
   if uid is null then
@@ -463,7 +507,7 @@ begin
   if not public.is_company_admin() then
     raise exception 'Csak adminisztrátor távolíthat el tagot.' using errcode = '42501';
   end if;
-  if target_user = auth.uid() then
+  if target_user = app.uid() then
     raise exception 'Saját magadat nem távolíthatod el.' using errcode = '22023';
   end if;
 
@@ -480,36 +524,33 @@ end;
 $$;
 
 -- RPC jogosultságok
-revoke all on function public.create_company(text) from public, anon;
-revoke all on function public.join_company(text) from public, anon;
-revoke all on function public.preview_invite(text) from public, anon;
-revoke all on function public.regenerate_invite_code() from public, anon;
-revoke all on function public.regenerate_ical_token() from public, anon;
-revoke all on function public.set_member_role(uuid, text) from public, anon;
-revoke all on function public.remove_member(uuid) from public, anon;
-revoke all on function public.generate_invite_code() from public, anon, authenticated;
-
-grant execute on function public.create_company(text) to authenticated;
-grant execute on function public.join_company(text) to authenticated;
-grant execute on function public.preview_invite(text) to authenticated;
-grant execute on function public.regenerate_invite_code() to authenticated;
-grant execute on function public.regenerate_ical_token() to authenticated;
-grant execute on function public.set_member_role(uuid, text) to authenticated;
-grant execute on function public.remove_member(uuid) to authenticated;
-grant execute on function public.auth_company_id() to authenticated;
-grant execute on function public.is_company_admin() to authenticated;
+revoke all on all functions in schema public from public;
+grant execute on function public.create_company(text) to kibent_app;
+grant execute on function public.join_company(text) to kibent_app;
+grant execute on function public.preview_invite(text) to kibent_app;
+grant execute on function public.regenerate_invite_code() to kibent_app;
+grant execute on function public.regenerate_ical_token() to kibent_app;
+grant execute on function public.set_member_role(uuid, text) to kibent_app;
+grant execute on function public.remove_member(uuid) to kibent_app;
+grant execute on function public.auth_company_id() to kibent_app;
+grant execute on function public.is_company_admin() to kibent_app;
+-- trigger függvények: a triggerhez nem kell EXECUTE jog a hívónak, de a
+-- schedules_guard / touch_updated_at a kibent_app nevében fut
+grant execute on function public.schedules_guard() to kibent_app;
+grant execute on function public.touch_updated_at() to kibent_app;
 
 -- -----------------------------------------------------------------------------
--- 5. Oszlopszintű jogosultságok (érzékeny mezők védelme)
+-- 5. Tábla- és oszlopszintű jogosultságok (érzékeny mezők védelme)
 -- -----------------------------------------------------------------------------
-revoke insert, update, delete on public.companies from anon, authenticated;
-grant update (name) on public.companies to authenticated;
+grant select on public.companies to kibent_app;
+grant update (name) on public.companies to kibent_app;
 
-revoke insert, update, delete on public.profiles from anon, authenticated;
-grant update (full_name, avatar_url) on public.profiles to authenticated;
+grant select on public.profiles to kibent_app;
+grant update (full_name, avatar_url) on public.profiles to kibent_app;
 
-revoke all on public.companies, public.profiles, public.recurring_patterns,
-              public.schedules, public.medical_documents from anon;
+grant select, insert, update, delete on public.recurring_patterns to kibent_app;
+grant select, insert, update, delete on public.schedules to kibent_app;
+grant select, insert, delete on public.medical_documents to kibent_app;
 
 -- -----------------------------------------------------------------------------
 -- 6. Row Level Security
@@ -522,51 +563,51 @@ alter table public.medical_documents  enable row level security;
 
 -- 6.1 companies
 create policy "companies_select_own"
-  on public.companies for select to authenticated
+  on public.companies for select to kibent_app
   using (id = public.auth_company_id());
 
 create policy "companies_update_admin"
-  on public.companies for update to authenticated
+  on public.companies for update to kibent_app
   using (id = public.auth_company_id() and public.is_company_admin())
   with check (id = public.auth_company_id() and public.is_company_admin());
 
 -- 6.2 profiles
 create policy "profiles_select_self_or_company"
-  on public.profiles for select to authenticated
-  using (id = auth.uid() or (company_id is not null and company_id = public.auth_company_id()));
+  on public.profiles for select to kibent_app
+  using (id = app.uid() or (company_id is not null and company_id = public.auth_company_id()));
 
 create policy "profiles_update_self"
-  on public.profiles for update to authenticated
-  using (id = auth.uid())
-  with check (id = auth.uid());
+  on public.profiles for update to kibent_app
+  using (id = app.uid())
+  with check (id = app.uid());
 
 -- 6.3 recurring_patterns
 create policy "patterns_select_company"
-  on public.recurring_patterns for select to authenticated
+  on public.recurring_patterns for select to kibent_app
   using (company_id = public.auth_company_id());
 
 create policy "patterns_insert_own"
-  on public.recurring_patterns for insert to authenticated
-  with check (user_id = auth.uid() and company_id = public.auth_company_id());
+  on public.recurring_patterns for insert to kibent_app
+  with check (user_id = app.uid() and company_id = public.auth_company_id());
 
 create policy "patterns_update_own"
-  on public.recurring_patterns for update to authenticated
-  using (user_id = auth.uid() and company_id = public.auth_company_id())
-  with check (user_id = auth.uid() and company_id = public.auth_company_id());
+  on public.recurring_patterns for update to kibent_app
+  using (user_id = app.uid() and company_id = public.auth_company_id())
+  with check (user_id = app.uid() and company_id = public.auth_company_id());
 
 create policy "patterns_delete_own"
-  on public.recurring_patterns for delete to authenticated
-  using (user_id = auth.uid() and company_id = public.auth_company_id());
+  on public.recurring_patterns for delete to kibent_app
+  using (user_id = app.uid() and company_id = public.auth_company_id());
 
 -- 6.4 schedules
 create policy "schedules_select_company"
-  on public.schedules for select to authenticated
+  on public.schedules for select to kibent_app
   using (company_id = public.auth_company_id());
 
 create policy "schedules_insert_own"
-  on public.schedules for insert to authenticated
+  on public.schedules for insert to kibent_app
   with check (
-    user_id = auth.uid()
+    user_id = app.uid()
     and company_id = public.auth_company_id()
     and (
       (status = 'vacation' and (approval_status = 'pending' or public.is_company_admin()))
@@ -575,10 +616,10 @@ create policy "schedules_insert_own"
   );
 
 create policy "schedules_update_own"
-  on public.schedules for update to authenticated
-  using (user_id = auth.uid() and company_id = public.auth_company_id())
+  on public.schedules for update to kibent_app
+  using (user_id = app.uid() and company_id = public.auth_company_id())
   with check (
-    user_id = auth.uid()
+    user_id = app.uid()
     and company_id = public.auth_company_id()
     and (
       (status = 'vacation' and (approval_status = 'pending' or public.is_company_admin()))
@@ -588,8 +629,8 @@ create policy "schedules_update_own"
 
 -- Admin: mások kérelmeinek elbírálása (a trigger csak az approval_status változását engedi)
 create policy "schedules_review_admin"
-  on public.schedules for update to authenticated
-  using (company_id = public.auth_company_id() and public.is_company_admin() and user_id <> auth.uid())
+  on public.schedules for update to kibent_app
+  using (company_id = public.auth_company_id() and public.is_company_admin() and user_id <> app.uid())
   with check (
     company_id = public.auth_company_id()
     and public.is_company_admin()
@@ -597,22 +638,22 @@ create policy "schedules_review_admin"
   );
 
 create policy "schedules_delete_own"
-  on public.schedules for delete to authenticated
-  using (user_id = auth.uid() and company_id = public.auth_company_id());
+  on public.schedules for delete to kibent_app
+  using (user_id = app.uid() and company_id = public.auth_company_id());
 
 -- 6.5 medical_documents – csak a feltöltő és a cég adminjai
 create policy "medical_docs_select_owner_or_admin"
-  on public.medical_documents for select to authenticated
+  on public.medical_documents for select to kibent_app
   using (
     company_id = public.auth_company_id()
-    and (user_id = auth.uid() or public.is_company_admin())
+    and (user_id = app.uid() or public.is_company_admin())
   );
 
 create policy "medical_docs_insert_owner_or_admin"
-  on public.medical_documents for insert to authenticated
+  on public.medical_documents for insert to kibent_app
   with check (
     company_id = public.auth_company_id()
-    and (user_id = auth.uid() or public.is_company_admin())
+    and (user_id = app.uid() or public.is_company_admin())
     and exists (
       select 1 from public.schedules s
       where s.request_group_id = medical_documents.request_group_id
@@ -623,49 +664,16 @@ create policy "medical_docs_insert_owner_or_admin"
   );
 
 create policy "medical_docs_delete_owner_or_admin"
-  on public.medical_documents for delete to authenticated
+  on public.medical_documents for delete to kibent_app
   using (
     company_id = public.auth_company_id()
-    and (user_id = auth.uid() or public.is_company_admin())
+    and (user_id = app.uid() or public.is_company_admin())
   );
 
 -- -----------------------------------------------------------------------------
--- 7. Storage: privát "medical-docs" bucket
--- Útvonal: {company_id}/{user_id}/{request_group_id}/{fájlnév}
+-- 7. Fájlok
+-- Az orvosi igazolások a Vercel Blob privát tárolójában vannak:
+--   {company_id}/{user_id}/{request_group_id}/{uuid}-{fájlnév}
+-- A fájlhoz csak az kap 60 mp-es aláírt URL-t, aki a medical_documents sort
+-- az RLS szerint láthatja (feltöltő vagy a cég adminja).
 -- -----------------------------------------------------------------------------
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'medical-docs',
-  'medical-docs',
-  false,
-  10485760, -- 10 MB
-  array['application/pdf', 'image/jpeg', 'image/png']
-)
-on conflict (id) do update
-  set public = false,
-      file_size_limit = excluded.file_size_limit,
-      allowed_mime_types = excluded.allowed_mime_types;
-
-create policy "medical_docs_storage_select"
-  on storage.objects for select to authenticated
-  using (
-    bucket_id = 'medical-docs'
-    and (storage.foldername(name))[1] = public.auth_company_id()::text
-    and ((storage.foldername(name))[2] = auth.uid()::text or public.is_company_admin())
-  );
-
-create policy "medical_docs_storage_insert"
-  on storage.objects for insert to authenticated
-  with check (
-    bucket_id = 'medical-docs'
-    and (storage.foldername(name))[1] = public.auth_company_id()::text
-    and ((storage.foldername(name))[2] = auth.uid()::text or public.is_company_admin())
-  );
-
-create policy "medical_docs_storage_delete"
-  on storage.objects for delete to authenticated
-  using (
-    bucket_id = 'medical-docs'
-    and (storage.foldername(name))[1] = public.auth_company_id()::text
-    and ((storage.foldername(name))[2] = auth.uid()::text or public.is_company_admin())
-  );

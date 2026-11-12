@@ -80,7 +80,10 @@ export const leaveRequestSchema = z
     }
   });
 
-export const uuidSchema = z.string().uuid("Érvénytelen azonosító.");
+// Általános UUID formátum (verziótól függetlenül – a Zod 4 uuid() csak RFC változatot fogad el).
+export const uuidSchema = z
+  .string()
+  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "Érvénytelen azonosító.");
 
 export const reviewSchema = z.object({
   groupId: uuidSchema,

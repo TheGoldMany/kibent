@@ -6,10 +6,13 @@ import { requireMember } from "@/lib/auth";
 import { countPendingRequests } from "@/lib/queries";
 import { siteUrl } from "@/lib/utils";
 
+// Session-függő oldalak: mindig kérésidőben renderelődnek (Neon Auth).
+export const dynamic = "force-dynamic";
+
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const ctx = await requireMember();
   const isAdmin = ctx.profile.role === "admin";
-  const pendingCount = isAdmin ? await countPendingRequests(ctx.company.id) : 0;
+  const pendingCount = isAdmin ? await countPendingRequests(ctx.userId, ctx.company.id) : 0;
 
   return (
     <div className="flex min-h-screen flex-col">

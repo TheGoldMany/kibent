@@ -1,9 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
 import { requireMember } from "@/lib/auth";
-import { friendlyError } from "@/lib/utils";
+import { dbErrorMessage, withUser } from "@/lib/db";
 import { firstError, recurringPatternSchema, setDayStatusSchema } from "@/lib/validations";
 import type { WorkStatus } from "@/lib/database.types";
 import type { FormState } from "@/components/ui/form-message";
@@ -16,43 +15,44 @@ export async function setDayStatusAction(date: string, status: WorkStatus | null
   if (!parsed.success) return { ok: false, error: firstError(parsed.error) };
 
   const ctx = await requireMember();
-  const supabase = await createClient();
+  const { date: day, status: next } = parsed.data;
 
-  const { data: existing } = await supabase
-    .from("schedules")
-    .select("status, approval_status")
-    .eq("user_id", ctx.userId)
-    .eq("date", parsed.data.date)
-    .maybeSingle();
+  let blocked = false;
+  try {
+    await withUser(ctx.userId, async (tx) => {
+      const existing = await tx.one<{ status: string; approval_status: string }>(
+        "select status, approval_status from schedules where user_id = $1 and date = $2 for update",
+        [ctx.userId, day],
+      );
+      if (
+        existing &&
+        (existing.status === "vacation" || existing.status === "sick") &&
+        existing.approval_status !== "rejected"
+      ) {
+        blocked = true;
+        return;
+      }
+      if (next === null) {
+        await tx.query("delete from schedules where user_id = $1 and date = $2", [ctx.userId, day]);
+      } else {
+        await tx.query(
+          `insert into schedules (company_id, user_id, date, status, approval_status, request_group_id, note)
+           values ($1, $2, $3, $4, 'approved', null, null)
+           on conflict (user_id, date) do update
+             set status = excluded.status, approval_status = 'approved', request_group_id = null, note = null`,
+          [ctx.company.id, ctx.userId, day, next],
+        );
+      }
+    });
+  } catch (error) {
+    return { ok: false, error: dbErrorMessage(error) };
+  }
 
-  if (existing && (existing.status === "vacation" || existing.status === "sick") && existing.approval_status !== "rejected") {
+  if (blocked) {
     return {
       ok: false,
       error: "Erre a napra szabadság vagy betegszabadság van rögzítve. Előbb vond vissza a Kérelmek oldalon.",
     };
-  }
-
-  if (parsed.data.status === null) {
-    const { error } = await supabase
-      .from("schedules")
-      .delete()
-      .eq("user_id", ctx.userId)
-      .eq("date", parsed.data.date);
-    if (error) return { ok: false, error: friendlyError(error) };
-  } else {
-    const { error } = await supabase.from("schedules").upsert(
-      {
-        company_id: ctx.company.id,
-        user_id: ctx.userId,
-        date: parsed.data.date,
-        status: parsed.data.status,
-        approval_status: "approved",
-        request_group_id: null,
-        note: null,
-      },
-      { onConflict: "user_id,date" },
-    );
-    if (error) return { ok: false, error: friendlyError(error) };
   }
 
   revalidatePath("/");
@@ -74,11 +74,20 @@ export async function saveRecurringPatternAction(_prev: FormState, formData: For
   if (!parsed.success) return { error: firstError(parsed.error) };
 
   const ctx = await requireMember();
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("recurring_patterns")
-    .upsert({ user_id: ctx.userId, company_id: ctx.company.id, ...parsed.data }, { onConflict: "user_id" });
-  if (error) return { error: friendlyError(error) };
+  const p = parsed.data;
+  try {
+    await withUser(ctx.userId, (tx) =>
+      tx.query(
+        `insert into recurring_patterns (user_id, company_id, mon, tue, wed, thu, fri)
+         values ($1, $2, $3, $4, $5, $6, $7)
+         on conflict (user_id) do update
+           set mon = excluded.mon, tue = excluded.tue, wed = excluded.wed, thu = excluded.thu, fri = excluded.fri`,
+        [ctx.userId, ctx.company.id, p.mon, p.tue, p.wed, p.thu, p.fri],
+      ),
+    );
+  } catch (error) {
+    return { error: dbErrorMessage(error) };
+  }
 
   revalidatePath("/");
   revalidatePath("/settings");

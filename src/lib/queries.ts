@@ -1,14 +1,15 @@
 import "server-only";
-import { createClient } from "@/lib/supabase/server";
+import { withUser } from "@/lib/db";
 
-/** Függő szabadságkérelmek (csoportok) száma a cégben. */
-export async function countPendingRequests(companyId: string): Promise<number> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("schedules")
-    .select("request_group_id, user_id")
-    .eq("company_id", companyId)
-    .eq("approval_status", "pending");
-  if (!data) return 0;
-  return new Set(data.map((r) => r.request_group_id ?? `${r.user_id}`)).size;
+/** Függő szabadságkérelmek (csoportok) száma a cégben – admin számára. */
+export async function countPendingRequests(userId: string, companyId: string): Promise<number> {
+  const row = await withUser(userId, (tx) =>
+    tx.one<{ n: number }>(
+      `select count(distinct coalesce(request_group_id::text, user_id::text))::int as n
+         from schedules
+        where company_id = $1 and approval_status = 'pending'`,
+      [companyId],
+    ),
+  );
+  return row?.n ?? 0;
 }

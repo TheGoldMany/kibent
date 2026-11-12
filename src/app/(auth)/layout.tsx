@@ -1,5 +1,8 @@
 import { Logo } from "@/components/layout/Logo";
 
+// Session-függő oldalak: mindig kérésidőben renderelődnek (Neon Auth).
+export const dynamic = "force-dynamic";
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-indigo-50 to-background p-4">

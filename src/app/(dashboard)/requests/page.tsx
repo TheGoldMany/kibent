@@ -8,9 +8,9 @@ import { RequestSummary } from "@/components/requests/RequestCard";
 import { LeaveRequestModal } from "@/components/calendar/LeaveRequestModal";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireMember } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { withUser } from "@/lib/db";
 import { formatRangeHu, parseISODate, toISODate, todayISO } from "@/lib/dates";
-import { groupRequests, type LeaveRequestGroup } from "@/lib/requests";
+import { groupRequests, type LeaveRequestGroup, type RequestRow } from "@/lib/requests";
 
 export const metadata: Metadata = { title: "Kérelmek" };
 
@@ -21,58 +21,51 @@ export default async function RequestsPage() {
   const isAdmin = ctx.profile.role === "admin";
   const today = todayISO();
   const since = toISODate(subDays(parseISODate(today), HISTORY_DAYS));
-  const supabase = await createClient();
 
-  const columns = "user_id, date, status, approval_status, request_group_id, note, created_at, reviewed_by";
-
-  const [ownRes, pendingRes, teamSickRes, membersRes, docsRes] = await Promise.all([
-    supabase
-      .from("schedules")
-      .select(columns)
-      .eq("user_id", ctx.userId)
-      .in("status", ["vacation", "sick"])
-      .not("request_group_id", "is", null)
-      .gte("date", since),
-    isAdmin
-      ? supabase
-          .from("schedules")
-          .select(columns)
-          .eq("company_id", ctx.company.id)
-          .eq("status", "vacation")
-          .eq("approval_status", "pending")
-          .neq("user_id", ctx.userId)
-      : Promise.resolve({ data: [], error: null }),
-    isAdmin
-      ? supabase
-          .from("schedules")
-          .select(columns)
-          .eq("company_id", ctx.company.id)
-          .in("status", ["sick", "vacation"])
-          .neq("approval_status", "pending")
-          .neq("user_id", ctx.userId)
-          .not("request_group_id", "is", null)
-          .gte("date", since)
-      : Promise.resolve({ data: [], error: null }),
-    supabase.from("profiles").select("id, full_name").eq("company_id", ctx.company.id),
+  const cols = "user_id, date, status, approval_status, request_group_id, note, created_at, reviewed_by";
+  const data = await withUser(ctx.userId, async (tx) => {
+    const own = await tx.query<RequestRow>(
+      `select ${cols} from schedules
+        where user_id = $1 and status in ('vacation', 'sick') and request_group_id is not null and date >= $2`,
+      [ctx.userId, since],
+    );
+    const pending = isAdmin
+      ? await tx.query<RequestRow>(
+          `select ${cols} from schedules
+            where company_id = $1 and status = 'vacation' and approval_status = 'pending' and user_id <> $2`,
+          [ctx.company.id, ctx.userId],
+        )
+      : [];
+    const team = isAdmin
+      ? await tx.query<RequestRow>(
+          `select ${cols} from schedules
+            where company_id = $1 and status in ('sick', 'vacation') and approval_status <> 'pending'
+              and user_id <> $2 and request_group_id is not null and date >= $3`,
+          [ctx.company.id, ctx.userId, since],
+        )
+      : [];
+    const members = await tx.query<{ id: string; full_name: string }>(
+      "select id, full_name from profiles where company_id = $1",
+      [ctx.company.id],
+    );
     // RLS: member csak a sajátját, admin a cég összes igazolását kapja vissza
-    supabase.from("medical_documents").select("id, request_group_id, file_name, mime_type, uploaded_at").order("uploaded_at"),
-  ]);
+    const docs = await tx.query<DocItem & { request_group_id: string }>(
+      "select id, request_group_id, file_name, mime_type, uploaded_at from medical_documents order by uploaded_at",
+    );
+    return { own, pending, team, members, docs };
+  });
 
-  if (ownRes.error || pendingRes.error || teamSickRes.error || membersRes.error || docsRes.error) {
-    throw new Error("Nem sikerült betölteni a kérelmeket.");
-  }
-
-  const names: Record<string, string> = Object.fromEntries(membersRes.data.map((m) => [m.id, m.full_name]));
+  const names: Record<string, string> = Object.fromEntries(data.members.map((m) => [m.id, m.full_name]));
   const docsByGroup = new Map<string, DocItem[]>();
-  for (const d of docsRes.data) {
+  for (const d of data.docs) {
     const list = docsByGroup.get(d.request_group_id) ?? [];
     list.push(d);
     docsByGroup.set(d.request_group_id, list);
   }
 
-  const own = groupRequests(ownRes.data);
-  const pending = groupRequests(pendingRes.data).sort((a, b) => (a.startDate < b.startDate ? -1 : 1));
-  const teamHistory = groupRequests(teamSickRes.data);
+  const own = groupRequests(data.own);
+  const pending = groupRequests(data.pending).sort((a, b) => (a.startDate < b.startDate ? -1 : 1));
+  const teamHistory = groupRequests(data.team);
 
   return (
     <div className="space-y-8">

@@ -1,7 +1,8 @@
 import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getAuth } from "@/lib/auth/server";
+import { withUser } from "@/lib/db";
 import type { Company, Profile } from "@/lib/database.types";
 
 export type SessionContext = {
@@ -10,23 +11,31 @@ export type SessionContext = {
   company: Company | null;
 };
 
+/** A bejelentkezett Neon Auth felhasználó azonosítója (vagy null). */
+export const getSessionUserId = cache(async (): Promise<string | null> => {
+  const { data } = await getAuth().getSession();
+  return data?.user?.id ?? null;
+});
+
 /** Kérésenként egyszer lekérdezett session + profil + cég. */
 export const getSessionContext = cache(async (): Promise<SessionContext | null> => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  const userId = await getSessionUserId();
+  if (!userId) return null;
 
-  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-  if (!profile) return null;
-
-  let company: Company | null = null;
-  if (profile.company_id) {
-    const { data } = await supabase.from("companies").select("*").eq("id", profile.company_id).single();
-    company = data;
-  }
-  return { userId: user.id, profile, company };
+  return withUser(userId, async (tx) => {
+    const profile = await tx.one<Profile>(
+      `select id, company_id, email, full_name, avatar_url, role, ical_token, created_at::text
+         from profiles where id = $1`,
+      [userId],
+    );
+    if (!profile) return null;
+    const company = profile.company_id
+      ? await tx.one<Company>(`select id, name, invite_code, created_at::text from companies where id = $1`, [
+          profile.company_id,
+        ])
+      : null;
+    return { userId, profile, company };
+  });
 });
 
 export type MemberContext = SessionContext & { company: Company };

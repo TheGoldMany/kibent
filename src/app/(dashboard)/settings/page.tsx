@@ -4,7 +4,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { RecurringPatternForm } from "@/components/calendar/RecurringPatternModal";
 import { CompanyForm, IcalLinks, MemberList, ProfileForm } from "@/components/settings/SettingsForms";
 import { requireMember } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { withUser } from "@/lib/db";
+import type { Role } from "@/lib/database.types";
+import type { PatternDays } from "@/lib/schedule-resolver";
 import { siteUrl } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Beállítások" };
@@ -12,19 +14,22 @@ export const metadata: Metadata = { title: "Beállítások" };
 export default async function SettingsPage() {
   const ctx = await requireMember();
   const isAdmin = ctx.profile.role === "admin";
-  const supabase = await createClient();
-
-  const [patternRes, membersRes] = await Promise.all([
-    supabase.from("recurring_patterns").select("mon, tue, wed, thu, fri").eq("user_id", ctx.userId).maybeSingle(),
-    isAdmin
-      ? supabase.from("profiles").select("id, full_name, email, role").eq("company_id", ctx.company.id)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
+  const { pattern, rawMembers } = await withUser(ctx.userId, async (tx) => ({
+    pattern: await tx.one<PatternDays>("select mon, tue, wed, thu, fri from recurring_patterns where user_id = $1", [
+      ctx.userId,
+    ]),
+    rawMembers: isAdmin
+      ? await tx.query<{ id: string; full_name: string; email: string; role: Role }>(
+          "select id, full_name, email, role from profiles where company_id = $1",
+          [ctx.company.id],
+        )
+      : [],
+  }));
 
   const base = siteUrl();
   const icalUrl = `${base}/api/ical/${ctx.profile.ical_token}/calendar.ics`;
   const collator = new Intl.Collator("hu");
-  const members = [...(membersRes.data ?? [])].sort((a, b) => collator.compare(a.full_name, b.full_name));
+  const members = [...rawMembers].sort((a, b) => collator.compare(a.full_name, b.full_name));
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -42,7 +47,7 @@ export default async function SettingsPage() {
         title="Ismétlődő heti rutin"
         description="Az alapértelmezett heti beosztásod. Egy-egy napot a naptárban bármikor felülírhatsz."
       >
-        <RecurringPatternForm initial={patternRes.data ?? null} />
+        <RecurringPatternForm initial={pattern} />
       </Section>
 
       <Section
