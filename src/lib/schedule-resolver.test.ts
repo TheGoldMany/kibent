@@ -132,3 +132,20 @@ describe("validációk", () => {
     expect(safeFileName("Orvosi igazolás – Kovács.pdf")).toBe("Orvosi_igazolas_Kovacs.pdf");
   });
 });
+
+import { groupRequests } from "./requests";
+
+describe("groupRequests", () => {
+  it("napokat kérelemmé fog össze, függő állapot elsőbbséget kap", () => {
+    const base = { user_id: "u", note: null, created_at: "x", reviewed_by: null } as const;
+    const groups = groupRequests([
+      { ...base, date: "2026-11-18", status: "vacation", approval_status: "approved", request_group_id: "g1" },
+      { ...base, date: "2026-11-16", status: "vacation", approval_status: "pending", request_group_id: "g1" },
+      { ...base, date: "2026-11-23", status: "sick", approval_status: "approved", request_group_id: "g2" },
+      { ...base, date: "2026-11-24", status: "office", approval_status: "approved", request_group_id: null },
+    ]);
+    expect(groups).toHaveLength(2);
+    const g1 = groups.find((g) => g.groupId === "g1")!;
+    expect(g1).toMatchObject({ startDate: "2026-11-16", endDate: "2026-11-18", dayCount: 2, approval: "pending" });
+  });
+});
