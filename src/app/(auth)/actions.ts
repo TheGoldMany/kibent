@@ -18,8 +18,14 @@ import type { FormState } from "@/components/ui/form-message";
 
 function authErrorHu(message: string | undefined): string {
   if (!message) return "A bejelentkezés nem sikerült. Próbáld újra.";
-  if (/invalid login credentials/i.test(message)) return "Hibás email cím vagy jelszó.";
-  if (/email not confirmed/i.test(message)) return "Előbb erősítsd meg az email címed a kiküldött linkkel.";
+  // Supabase és Better Auth (Neon Auth) szövegezések
+  if (/invalid login credentials|invalid email or password|invalid password/i.test(message)) {
+    return "Hibás email cím vagy jelszó.";
+  }
+  if (/email not (confirmed|verified)/i.test(message)) return "Előbb erősítsd meg az email címed a kiküldött linkkel.";
+  if (/password (is )?too short/i.test(message)) return "A jelszó legalább 8 karakter legyen.";
+  if (/password (is )?too long/i.test(message)) return "A jelszó túl hosszú.";
+  if (/invalid email/i.test(message)) return "Érvénytelen email cím.";
   if (/already (registered|exists)/i.test(message)) return "Ezzel az email címmel már regisztráltak. Jelentkezz be!";
   if (/rate limit|too many/i.test(message)) return "Túl sok próbálkozás. Várj egy kicsit, és próbáld újra.";
   if (/invalid origin|untrusted origin/i.test(message)) {
