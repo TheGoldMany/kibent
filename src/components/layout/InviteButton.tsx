@@ -1,26 +1,32 @@
 "use client";
 
 import { useState } from "react";
-import { Check, UserPlus } from "lucide-react";
+import { UserPlus } from "lucide-react";
+import { InviteForm } from "@/components/invites/InviteForm";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
-export function InviteButton({ inviteUrl }: { inviteUrl: string }) {
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    await navigator.clipboard.writeText(inviteUrl).catch(() => undefined);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
+/** Fejléc gomb: kollégák meghívása email címmel. */
+export function InviteButton() {
+  const [open, setOpen] = useState(false);
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="outline" size="sm" onClick={copy}>
-          {copied ? <Check /> : <UserPlus />}
-          <span className="hidden md:inline">{copied ? "Link másolva!" : "Kollégák meghívása"}</span>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" aria-label="Kollégák meghívása">
+          <UserPlus />
+          <span className="hidden md:inline">Kollégák meghívása</span>
         </Button>
-      </TooltipTrigger>
-      <TooltipContent>Meghívó link másolása – küldd el a kollégáidnak</TooltipContent>
-    </Tooltip>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Kollégák meghívása</DialogTitle>
+          <DialogDescription>
+            Írd be a kollégáid email címét. A levélben kapott linkkel regisztrálnak, és belépés után automatikusan a
+            csapatban lesznek.
+          </DialogDescription>
+        </DialogHeader>
+        {open && <InviteForm />}
+      </DialogContent>
+    </Dialog>
   );
 }

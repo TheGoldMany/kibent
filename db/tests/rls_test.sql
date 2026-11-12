@@ -187,5 +187,90 @@ select pg_temp.expect_fail($$select * from neon_auth."user"$$, 'kibent_app nem o
 set app.user_id = '';
 select pg_temp.expect_eq((select count(*) from public.schedules), 0, 'user_id nélkül semmi sem látszik');
 
+-- ---------------------------------------------------------------- 0002: munkaidő, ebédszünet, meghívók
+reset role;
+create temp table t_ctx2 as
+  select (select id from public.companies where name like 'Acme%') as acme_id,
+         (select id from public.companies where name like 'Other%') as other_id;
+grant select on t_ctx2 to kibent_app;
+set role kibent_app;
+
+-- Ebédszünet hossza: csak admin (D) állíthatja
+set app.user_id = '00000000-0000-0000-0000-00000000000d';
+update public.companies set lunch_minutes = 45;
+set app.user_id = '00000000-0000-0000-0000-00000000000a';
+update public.companies set lunch_minutes = 90;
+reset role;
+select pg_temp.expect_eq((select lunch_minutes from public.companies where id = (select acme_id from t_ctx2))::bigint, 45, 'ebédszünet hosszát csak admin állítja');
+set role kibent_app;
+
+-- Munkaidő
+set app.user_id = '00000000-0000-0000-0000-00000000000a';
+insert into public.work_hours (user_id, company_id, weekday, start_time, end_time, lunch_start)
+  values (app.uid(), (select acme_id from t_ctx2), 1, '09:00', '17:00', '12:00');
+select pg_temp.expect_fail(
+  $$insert into public.work_hours (user_id, company_id, weekday, start_time, end_time, lunch_start)
+    values (app.uid(), (select acme_id from t_ctx2), 2, '09:00', '17:00', '18:00')$$,
+  'ebéd a munkaidőn kívül tiltott');
+select pg_temp.expect_fail(
+  $$insert into public.work_hours (user_id, company_id, weekday, start_time, end_time)
+    values (app.uid(), (select acme_id from t_ctx2), 3, '17:00', '09:00')$$,
+  'munkaidő vége nem lehet a kezdet előtt');
+select pg_temp.expect_fail(
+  $$insert into public.work_hours (user_id, company_id, weekday, start_time, end_time)
+    values ('00000000-0000-0000-0000-00000000000d', (select acme_id from t_ctx2), 1, '09:00', '17:00')$$,
+  'más munkaidejét nem írhatod');
+set app.user_id = '00000000-0000-0000-0000-00000000000d';
+select pg_temp.expect_eq((select count(*) from public.work_hours), 1, 'kolléga látja a cég munkaidőit');
+update public.work_hours set start_time = '06:00';
+reset role;
+select pg_temp.expect_eq((select count(*) from public.work_hours where start_time = '06:00'), 0, 'kolléga nem módosíthatja más munkaidejét');
+set role kibent_app;
+set app.user_id = '00000000-0000-0000-0000-00000000000c';
+select pg_temp.expect_eq((select count(*) from public.work_hours), 0, 'tenant izoláció: munkaidő');
+
+-- Meghívók
+set app.user_id = '00000000-0000-0000-0000-00000000000d';
+insert into public.company_invitations (company_id, email, invited_by)
+  values ((select acme_id from t_ctx2), 'bela@acme.hu', app.uid()),
+         ((select acme_id from t_ctx2), 'valaki@pelda.hu', app.uid());
+select pg_temp.expect_fail(
+  $$insert into public.company_invitations (company_id, email, invited_by)
+    values ((select acme_id from t_ctx2), 'bela@acme.hu', app.uid())$$,
+  'egy címre csak egy nyitott meghívó');
+select pg_temp.expect_fail(
+  $$insert into public.company_invitations (company_id, email, invited_by)
+    values ((select acme_id from t_ctx2), 'Nagybetus@Pelda.hu', app.uid())$$,
+  'email csak kisbetűs lehet');
+select pg_temp.expect_eq((select count(*) from public.company_invitations), 2, 'admin látja a meghívókat');
+
+set app.user_id = '00000000-0000-0000-0000-00000000000a';
+select pg_temp.expect_fail(
+  $$insert into public.company_invitations (company_id, email, invited_by)
+    values ((select acme_id from t_ctx2), 'hacker@pelda.hu', app.uid())$$,
+  'member nem hívhat meg senkit');
+select pg_temp.expect_eq((select count(*) from public.company_invitations), 0, 'member nem látja a meghívókat (tokeneket)');
+
+set app.user_id = '00000000-0000-0000-0000-00000000000c';
+select pg_temp.expect_eq((select count(*) from public.company_invitations), 0, 'idegen admin nem látja a meghívókat');
+
+-- Token elfogadása rossz email címmel
+reset role;
+create temp table t_tok as select token from public.company_invitations where email = 'valaki@pelda.hu';
+grant select on t_tok to kibent_app;
+set role kibent_app;
+set app.user_id = '00000000-0000-0000-0000-00000000000c';
+select pg_temp.expect_fail($$select public.accept_invitation((select token from t_tok))$$, 'más címre szóló meghívó nem fogadható el');
+
+-- Automatikus csatlakozás belépéskor (B már nincs cégben, email: bela@acme.hu)
+set app.user_id = '00000000-0000-0000-0000-00000000000b';
+select pg_temp.expect_eq(
+  (select (public.accept_pending_invitation() = (select acme_id from t_ctx2))::int)::bigint, 1,
+  'nyitott meghívó alapján automatikusan csatlakozik');
+select pg_temp.expect_eq((select count(*) from public.profiles where id = app.uid() and company_id is not null and role = 'member'), 1, 'member szerepkörrel került a cégbe');
+select pg_temp.expect_eq((select (public.accept_pending_invitation() is null)::int)::bigint, 1, 'második hívás nem csinál semmit');
+reset role;
+select pg_temp.expect_eq((select count(*) from public.company_invitations where email = 'bela@acme.hu' and accepted_by is not null), 1, 'meghívó elfogadottnak jelölve');
+
 reset role;
 \echo 'MINDEN RLS TESZT SIKERES'

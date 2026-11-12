@@ -1,6 +1,6 @@
 "use client";
 
-import { RotateCcw } from "lucide-react";
+import { Clock, RotateCcw, UtensilsCrossed } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { StatusIcon } from "@/components/calendar/StatusIcon";
 import { STATUS_META } from "@/lib/status";
@@ -18,6 +18,7 @@ export function DayCell({
   showNote,
   onToggle,
   onReset,
+  hours,
 }: {
   day: ResolvedDay;
   personName: string;
@@ -28,6 +29,8 @@ export function DayCell({
   showNote: boolean;
   onToggle?: () => void;
   onReset?: () => void;
+  /** Aznapi munkaidő és ebédidő (ha a kolléga beállította). */
+  hours?: { work: string; lunch: string | null } | null;
 }) {
   const meta = STATUS_META[day.display];
   const isLeave = day.status === "vacation" || day.status === "sick";
@@ -98,6 +101,18 @@ export function DayCell({
             <StatusIcon status={day.display} /> {meta.label}
           </p>
           {sourceText && <p className="text-xs text-muted-foreground">{sourceText}</p>}
+          {hours && !isLeave && (
+            <div className="mt-1.5 space-y-0.5 border-t-2 border-dashed border-ink/20 pt-1.5 text-xs">
+              <p className="flex items-center gap-1.5">
+                <Clock aria-hidden className="h-3.5 w-3.5" /> Munkaidő: {hours.work}
+              </p>
+              {hours.lunch && (
+                <p className="flex items-center gap-1.5">
+                  <UtensilsCrossed aria-hidden className="h-3.5 w-3.5" /> Ebéd: {hours.lunch}
+                </p>
+              )}
+            </div>
+          )}
           {showNote && day.note && <p className="mt-1 text-xs italic">„{day.note}”</p>}
           {interactive && (
             <p className="mt-1 text-xs text-primary">

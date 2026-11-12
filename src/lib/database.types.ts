@@ -9,6 +9,8 @@ export type Company = {
   id: string;
   name: string;
   invite_code: string;
+  /** Az ebédszünet hossza percben (cégszintű, admin állítja). */
+  lunch_minutes: number;
   created_at: string;
 };
 
@@ -58,4 +60,22 @@ export type MedicalDocument = {
   file_name: string;
   mime_type: "application/pdf" | "image/jpeg" | "image/png";
   uploaded_at: string;
+};
+
+/** Munkaidő egy hétköznapra (1 = hétfő … 5 = péntek). Az idők „HH:MM:SS” alakúak. */
+export type WorkHours = {
+  user_id: string;
+  weekday: 1 | 2 | 3 | 4 | 5;
+  start_time: string;
+  end_time: string;
+  lunch_start: string | null;
+};
+
+export type CompanyInvitation = {
+  id: string;
+  email: string;
+  token: string;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
 };

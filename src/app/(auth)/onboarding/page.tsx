@@ -18,9 +18,9 @@ export default async function OnboardingPage() {
     <div className="space-y-8">
       <div>
         <h1 className="font-display text-5xl font-bold leading-[0.95]">Szia, {ctx.profile.full_name.split(" ")[0]}!</h1>
-        <p className="mt-3 text-lg">Már csak egy lépés: hozz létre egy céget, vagy csatlakozz a csapatodhoz.</p>
+        <p className="mt-3 text-lg">Már csak egy lépés: hozd létre a céged naptárát, vagy csatlakozz a csapatodhoz.</p>
       </div>
-      <OnboardingForms />
+      <OnboardingForms email={ctx.profile.email} />
       <form action={signOutAction} className="text-center">
         <Button variant="link" size="sm" type="submit" className="text-muted-foreground">
           Kijelentkezés ({ctx.profile.email})

@@ -113,3 +113,94 @@ export function safeFileName(name: string): string {
 export function firstError(error: z.ZodError): string {
   return error.issues[0]?.message ?? "Érvénytelen adatok.";
 }
+
+// --- Munkaidő -------------------------------------------------------------------
+
+/** „HH:MM” → percek éjfél óta (null, ha érvénytelen). */
+export function timeToMinutes(value: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(value.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+/** Percek → „H:MM” (pl. 9:05). */
+export function minutesToTime(total: number): string {
+  const h = Math.floor(total / 60) % 24;
+  const m = total % 60;
+  return `${h}:${String(m).padStart(2, "0")}`;
+}
+
+/** „09:00:00” → „9:00”. */
+export function formatTime(value: string | null | undefined): string {
+  if (!value) return "";
+  const m = timeToMinutes(value);
+  return m === null ? value : minutesToTime(m);
+}
+
+export const LUNCH_MINUTE_OPTIONS = [0, 15, 20, 30, 45, 60, 90] as const;
+
+export const lunchMinutesSchema = z.object({
+  minutes: z.coerce
+    .number()
+    .int()
+    .refine((v) => (LUNCH_MINUTE_OPTIONS as readonly number[]).includes(v), "Válassz a megadott hosszak közül."),
+});
+
+const DAY_LABELS = ["", "Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek"];
+
+export type WorkDayInput = { weekday: number; enabled: boolean; start: string; end: string; lunch: string };
+
+/**
+ * Egy hét munkaidejének ellenőrzése. A lunchMinutes a cég ebédszünet-hossza:
+ * az ebédnek bele kell férnie a munkaidőbe.
+ */
+export function validateWorkWeek(
+  days: WorkDayInput[],
+  lunchMinutes: number,
+): { ok: true; rows: { weekday: number; start: string; end: string; lunch: string | null }[] } | { ok: false; error: string } {
+  const rows: { weekday: number; start: string; end: string; lunch: string | null }[] = [];
+  for (const d of days) {
+    if (!d.enabled) continue;
+    const label = DAY_LABELS[d.weekday] ?? "Nap";
+    const start = timeToMinutes(d.start);
+    const end = timeToMinutes(d.end);
+    if (start === null || end === null) return { ok: false, error: `${label}: add meg a munkaidő kezdetét és végét.` };
+    if (end <= start) return { ok: false, error: `${label}: a munkaidő vége legyen később, mint a kezdete.` };
+    let lunch: string | null = null;
+    if (d.lunch.trim()) {
+      const l = timeToMinutes(d.lunch);
+      if (l === null) return { ok: false, error: `${label}: érvénytelen ebédidő.` };
+      if (l < start || l + lunchMinutes > end) {
+        return { ok: false, error: `${label}: az ebédszünetnek (${lunchMinutes} perc) bele kell férnie a munkaidőbe.` };
+      }
+      lunch = minutesToTime(l);
+    }
+    rows.push({ weekday: d.weekday, start: minutesToTime(start), end: minutesToTime(end), lunch });
+  }
+  return { ok: true, rows };
+}
+
+// --- Meghívók -------------------------------------------------------------------
+
+export const MAX_INVITES_PER_BATCH = 20;
+
+/** Vesszővel, pontosvesszővel, szóközzel vagy új sorral elválasztott email címek. */
+export function parseEmailList(raw: string): { emails: string[]; invalid: string[] } {
+  const parts = raw
+    .split(/[\s,;]+/)
+    .map((p) => p.trim().toLowerCase())
+    .filter(Boolean);
+  const emails: string[] = [];
+  const invalid: string[] = [];
+  for (const p of parts) {
+    if (z.string().email().safeParse(p).success) {
+      if (!emails.includes(p)) emails.push(p);
+    } else {
+      invalid.push(p);
+    }
+  }
+  return { emails, invalid };
+}

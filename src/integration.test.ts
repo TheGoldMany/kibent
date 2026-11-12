@@ -14,7 +14,13 @@ const DB = process.env.TEST_DATABASE_URL;
 const run = DB ? describe : describe.skip;
 
 // ---- helyettesítések -------------------------------------------------------
-const session = { userId: null as string | null };
+const session = { userId: null as string | null, verified: true };
+// A session email címe egyezik a neon_auth."user" címmel (mint élesben)
+const SESSION_EMAILS: Record<string, string> = {
+  "00000000-0000-0000-0000-0000000000a1": "anna@acme.hu",
+  "00000000-0000-0000-0000-0000000000b1": "bela@acme.hu",
+  "00000000-0000-0000-0000-0000000000d1": "dani@acme.hu",
+};
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -25,7 +31,16 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/auth/server", () => ({
   getAuth: () => ({
     getSession: async () => ({
-      data: session.userId ? { user: { id: session.userId, email: `${session.userId.slice(-2)}@test.hu`, name: "Teszt Elek" } } : null,
+      data: session.userId
+        ? {
+            user: {
+              id: session.userId,
+              email: SESSION_EMAILS[session.userId] ?? `${session.userId.slice(-2)}@test.hu`,
+              name: "Teszt Elek",
+              emailVerified: session.verified,
+            },
+          }
+        : null,
     }),
     updateUser: async () => ({}),
   }),
@@ -83,29 +98,88 @@ run("integráció (helyi Postgres)", () => {
     expect(ctx?.company).toBeNull();
   });
 
-  it("onboarding: cég létrehozása és csatlakozás meghívóval", async () => {
-    const { createCompanyAction, joinCompanyAction } = await import("@/app/(auth)/actions");
+  it("onboarding: cég létrehozása és meghívás email címre", async () => {
+    const { createCompanyAction } = await import("@/app/(auth)/actions");
+    const { sendInvitationsAction } = await import("@/app/(dashboard)/settings/actions");
+    const { getSessionContext } = await import("@/lib/auth");
+    const { getInvitePreview } = await import("@/lib/invitations");
+    const InvitePage = (await import("@/app/invite/[token]/page")).default;
+
     as(ANNA);
     await expectRedirect(createCompanyAction(null, fd({ name: "Acme Kft." })), "/");
-    const { rows } = await pool.query("select invite_code from companies");
-    const code = rows[0].invite_code as string;
 
-    as(BELA);
-    expect(await joinCompanyAction(null, fd({ code: "ROSSZ123" }))).toEqual({
-      error: "Érvénytelen vagy lejárt meghívókód.",
+    expect(await sendInvitationsAction(null, fd({ emails: "bela@acme.hu, nem-email" }))).toMatchObject({
+      error: expect.stringContaining("Érvénytelen email cím"),
     });
-    await expectRedirect(joinCompanyAction(null, fd({ code: code.toLowerCase() })), "/");
+    const sent = await sendInvitationsAction(null, fd({ emails: "Bela@Acme.hu,\ndani@acme.hu" }));
+    // Emailküldés nincs beállítva a tesztben -> a link kimásolható
+    expect(sent?.results?.map((r) => [r.email, r.status])).toEqual([
+      ["bela@acme.hu", "link"],
+      ["dani@acme.hu", "link"],
+    ]);
+    const belaToken = sent!.results![0]!.url!.split("/invite/")[1]!;
 
-    // meghívó landing oldal
+    // Újraküldés ugyanarra a címre nem duplikál
+    await sendInvitationsAction(null, fd({ emails: "bela@acme.hu" }));
+    expect((await pool.query("select count(*)::int as n from company_invitations where email = 'bela@acme.hu'")).rows[0].n).toBe(1);
+
+    // Bejelentkezés előtt: a belépő oldal a token alapján kitölti az email címet
+    // (hasAccount attól függ, belépett-e már valaha – trigger nélküli Neonon csak az első belépés után van profil)
+    expect(await getInvitePreview(belaToken)).toMatchObject({ email: "bela@acme.hu", companyName: "Acme Kft.", expired: false });
+    session.userId = null;
+    await expectRedirect(InvitePage({ params: Promise.resolve({ token: belaToken }) }), `/login?next=%2Finvite%2F${belaToken}`);
+
+    // Más fiókkal megnyitva elutasítja (Dani még nincs megerősítve -> nincs automatikus csatlakozás)
     as(DANI);
-    const InvitePage = (await import("@/app/invite/[code]/page")).default;
-    await expectRedirect(InvitePage({ params: Promise.resolve({ code }) }), "/?welcome=1");
+    session.verified = false;
+    const wrong = JSON.stringify(await InvitePage({ params: Promise.resolve({ token: belaToken }) }));
+    expect(wrong).toContain("bela@acme.hu címre szól");
 
-    const { getSessionContext } = await import("@/lib/auth");
+    // A jó fiókkal csatlakozik
     as(BELA);
-    const ctx = await getSessionContext();
-    expect(ctx?.company?.name).toBe("Acme Kft.");
-    expect(ctx?.profile.role).toBe("member");
+    session.verified = true;
+    await expectRedirect(InvitePage({ params: Promise.resolve({ token: belaToken }) }), "/?welcome=1");
+    expect((await getSessionContext())?.profile.role).toBe("member");
+
+    // Dani: megerősített email -> belépéskor automatikusan a csapatban van
+    as(DANI);
+    const dani = await getSessionContext();
+    expect(dani?.company?.name).toBe("Acme Kft.");
+
+    // Member nem hívhat meg
+    as(BELA);
+    await expectRedirect(sendInvitationsAction(null, fd({ emails: "x@pelda.hu" })), "/");
+  });
+
+  it("munkaidő és ebédszünet", async () => {
+    const { saveWorkHoursAction, updateLunchMinutesAction } = await import("@/app/(dashboard)/settings/actions");
+    as(BELA);
+    await expectRedirect(updateLunchMinutesAction(null, fd({ minutes: "45" })), "/");
+    as(ANNA);
+    expect(await updateLunchMinutesAction(null, fd({ minutes: "37" }))).toMatchObject({ error: expect.any(String) });
+    expect(await updateLunchMinutesAction(null, fd({ minutes: "45" }))).toEqual({ success: "Ebédszünet hossza elmentve." });
+
+    as(BELA);
+    const week = (lunch: string) =>
+      fd({
+        d1_enabled: "on", d1_start: "09:00", d1_end: "17:00", d1_lunch: lunch,
+        d3_enabled: "on", d3_start: "08:30", d3_end: "16:30", d3_lunch: "",
+      });
+    expect(await saveWorkHoursAction(null, week("16:30"))).toMatchObject({ error: expect.stringContaining("45 perc") });
+    expect(await saveWorkHoursAction(null, week("12:00"))).toEqual({ success: "Munkaidő elmentve." });
+    const { rows } = await pool.query(
+      "select weekday, start_time::text as s, end_time::text as e, lunch_start::text as l from work_hours where user_id = $1 order by weekday",
+      [BELA],
+    );
+    expect(rows).toEqual([
+      { weekday: 1, s: "09:00:00", e: "17:00:00", l: "12:00:00" },
+      { weekday: 3, s: "08:30:00", e: "16:30:00", l: null },
+    ]);
+    // Újramentés felülírja (nincs duplikáció)
+    expect(await saveWorkHoursAction(null, fd({ d2_enabled: "on", d2_start: "10:00", d2_end: "18:00", d2_lunch: "13:00" }))).toEqual({
+      success: "Munkaidő elmentve.",
+    });
+    expect((await pool.query("select count(*)::int as n from work_hours where user_id = $1", [BELA])).rows[0].n).toBe(1);
   });
 
   it("heti rutin és gyors váltás (iroda <-> HO, visszaállítás)", async () => {

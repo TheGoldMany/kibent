@@ -17,7 +17,8 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { FormMessage } from "@/components/ui/form-message";
 import { cn } from "@/lib/utils";
 
-type Mode = "password" | "signup" | "code";
+export type LoginMode = "password" | "signup" | "code";
+type Mode = LoginMode;
 
 const TABS: { id: Mode; label: string; short?: string }[] = [
   { id: "password", label: "Jelszóval" },
@@ -25,8 +26,19 @@ const TABS: { id: Mode; label: string; short?: string }[] = [
   { id: "code", label: "Emailes kód", short: "Kóddal" },
 ];
 
-export function LoginForms({ next, initialError }: { next: string; initialError?: string }) {
-  const [mode, setMode] = useState<Mode>("password");
+export function LoginForms({
+  next,
+  initialError,
+  defaultEmail,
+  defaultMode = "password",
+}: {
+  next: string;
+  initialError?: string;
+  /** Meghívónál előre kitöltött email cím. */
+  defaultEmail?: string;
+  defaultMode?: Mode;
+}) {
+  const [mode, setMode] = useState<Mode>(defaultMode);
   const [signInState, signIn] = useActionState(signInAction, initialError ? { error: initialError } : null);
   const [signUpState, signUp] = useActionState(signUpAction, null);
   const [sendCodeState, sendCode] = useActionState(sendSignInCodeAction, null);
@@ -89,7 +101,13 @@ export function LoginForms({ next, initialError }: { next: string; initialError?
         <form action={signIn} className="space-y-4">
           <input type="hidden" name="next" value={next} />
           <FormMessage state={verifiedNotice} />
-          <Field id="email" label="Email cím" type="email" autoComplete="email" defaultValue={verifiedNotice?.verified} />
+          <Field
+            id="email"
+            label="Email cím"
+            type="email"
+            autoComplete="email"
+            defaultValue={verifiedNotice?.verified ?? defaultEmail}
+          />
           <Field id="password" label="Jelszó" type="password" autoComplete="current-password" />
           <FormMessage state={signInState} />
           <SubmitButton size="lg" className="w-full" pendingText="Belépés…">
@@ -102,7 +120,7 @@ export function LoginForms({ next, initialError }: { next: string; initialError?
         <form action={signUp} className="space-y-4">
           <input type="hidden" name="next" value={next} />
           <Field id="fullName" label="Teljes név" autoComplete="name" placeholder="pl. Kovács Anna" />
-          <Field id="email" label="Email cím" type="email" autoComplete="email" />
+          <Field id="email" label="Email cím" type="email" autoComplete="email" defaultValue={defaultEmail} />
           <Field id="password" label="Jelszó (min. 8 karakter)" type="password" autoComplete="new-password" minLength={8} />
           <FormMessage state={signUpState} />
           <SubmitButton size="lg" className="w-full" pendingText="Fiók létrehozása…">
@@ -116,7 +134,7 @@ export function LoginForms({ next, initialError }: { next: string; initialError?
           <SignInCodeStep email={sendCodeState.codeSentTo} next={next} onBack={() => setMode("password")} />
         ) : (
           <form action={sendCode} className="space-y-4">
-            <Field id="email" label="Email cím" type="email" autoComplete="email" />
+            <Field id="email" label="Email cím" type="email" autoComplete="email" defaultValue={defaultEmail} />
             <p className="text-sm text-muted-foreground">
               Jelszó nélkül: küldünk egy egyszer használatos kódot a már regisztrált email címedre. Ha még nincs
               fiókod, előbb válaszd a Regisztrációt.

@@ -13,14 +13,19 @@ export type SessionContext = {
   pendingCount: number;
 };
 
-type SessionUser = { id: string; email: string; name: string };
+type SessionUser = { id: string; email: string; name: string; emailVerified: boolean };
 
 /** A bejelentkezett Neon Auth felhasználó (vagy null). */
 const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const { data } = await getAuth().getSession();
   const user = data?.user;
   if (!user?.id) return null;
-  return { id: user.id, email: user.email ?? "", name: user.name ?? "" };
+  return {
+    id: user.id,
+    email: user.email ?? "",
+    name: user.name ?? "",
+    emailVerified: Boolean((user as { emailVerified?: boolean }).emailVerified),
+  };
 });
 
 /** A bejelentkezett Neon Auth felhasználó azonosítója (vagy null). */
@@ -33,7 +38,8 @@ export const getSessionUserId = cache(async (): Promise<string | null> => (await
 const SESSION_SQL = `
   select row_to_json(p) as profile,
          case when c.id is null then null
-              else json_build_object('id', c.id, 'name', c.name, 'invite_code', c.invite_code, 'created_at', c.created_at)
+              else json_build_object('id', c.id, 'name', c.name, 'invite_code', c.invite_code,
+                                     'lunch_minutes', c.lunch_minutes, 'created_at', c.created_at)
          end as company,
          case when p.role = 'admin' and p.company_id is not null then (
            select count(distinct coalesce(s.request_group_id::text, s.user_id::text))::int
@@ -60,6 +66,11 @@ export const getSessionContext = cache(async (): Promise<SessionContext | null> 
       row = await tx.one<SessionRow>(SESSION_SQL, [userId]);
     }
     if (!row) return null;
+    // Még nincs cég, de a (megerősített) email címre nyitott meghívó szól: automatikus csatlakozás.
+    if (!row.company && user.emailVerified) {
+      const joined = await tx.one<{ company_id: string | null }>("select public.accept_pending_invitation() as company_id");
+      if (joined?.company_id) row = (await tx.one<SessionRow>(SESSION_SQL, [userId])) ?? row;
+    }
     return { userId, profile: row.profile, company: row.company, pendingCount: row.pending_count };
   });
 });

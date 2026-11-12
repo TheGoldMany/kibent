@@ -12,7 +12,8 @@ Ingyenes, multi-tenant csapatnaptár KKV-knak és startupoknak: ki van bent az i
 - **Szabadság:** időszak kiválasztása (a hétvégéket kihagyja), adminisztrátori jóváhagyás egy kattintással, „Függőben” jelzés a naptárban.
 - **Betegszabadság:** nincs jóváhagyás; az orvosi igazolás (PDF/JPG/PNG, max. 10 MB) privát Vercel Blob tárolóba kerül, és **csak a feltöltő meg az adminok** láthatják, 60 másodpercig érvényes aláírt URL-lel.
 - **Belépés:** email + jelszó, regisztráció vagy magic link (Neon Auth).
-- **Meghívás:** 8 karakteres meghívókód / link, amely újragenerálható; szerepkörök kezelése és tagok eltávolítása.
+- **Meghívás email címre:** az admin beírja a kollégák címét, mindenki személyes linket kap emailben; regisztráció és belépés után automatikusan a csapatban van (csak a meghívott címmel). Szerepkörök kezelése, tagok eltávolítása.
+- **Munkaidő és ebédszünet:** mindenki maga állítja be napi bontásban; az ebédszünet hosszát az admin adja meg. A naptárban látszik, ki ebédel éppen.
 - **Élő iCal feed:** `/api/ical/{token}/calendar.ics` (opcionálisan `?team=1`), Google, Apple és Outlook naptárral is működik.
 
 ## Telepítés
@@ -24,7 +25,7 @@ Ingyenes, multi-tenant csapatnaptár KKV-knak és startupoknak: ki van bent az i
    - Engedélyezd az *Email & Password* és a *Magic link* belépést.
    - A *Trusted domains / Redirect URLs* közé vedd fel: `http://localhost:3000` és az éles domained.
 3. Másold ki a **Base URL**-t (`NEON_AUTH_BASE_URL`) és a **pooled** connection stringet (`DATABASE_URL`).
-4. Futtasd a migrációt: vagy a Neon **SQL Editorban** (másold be a `db/migrations/0001_init.sql` tartalmát), vagy `psql`-lel:
+4. Futtasd a migrációkat sorrendben (`0001_init.sql`, `0002_work_hours_invitations.sql`): vagy a Neon **SQL Editorban** (másold be a fájlok tartalmát), vagy `psql`-lel:
 
 ```bash
 DATABASE_URL='postgresql://neondb_owner:…@…-pooler…neon.tech/neondb?sslmode=require' npm run db:migrate
@@ -63,6 +64,8 @@ cp .env.example .env.local
 | `NEON_AUTH_BASE_URL` | Neon konzol → Auth → Configuration |
 | `NEON_AUTH_COOKIE_SECRET` | min. 32 karakteres titok: `openssl rand -base64 32` |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob store tokenje |
+| `RESEND_API_KEY` | Resend API kulcs a meghívó emailekhez (opcionális – nélküle a link kézzel másolható) |
+| `EMAIL_FROM` | feladó, pl. `Kibent <meghivo@lundasoftware.hu>` (a domaint a Resendben hitelesíteni kell) |
 | `NEXT_PUBLIC_SITE_URL` | az alkalmazás nyilvános URL-je (meghívó, naptár linkek, auth visszairányítás) |
 
 ### 4. Futtatás

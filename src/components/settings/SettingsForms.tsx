@@ -4,10 +4,10 @@ import { useActionState, useState, useTransition } from "react";
 import { MoreHorizontal, RefreshCw, ShieldCheck, UserMinus, UserCog } from "lucide-react";
 import {
   regenerateIcalTokenAction,
-  regenerateInviteCodeAction,
   removeMemberAction,
   setMemberRoleAction,
   updateCompanyNameAction,
+  updateLunchMinutesAction,
   updateProfileAction,
 } from "@/app/(dashboard)/settings/actions";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SubmitButton } from "@/components/ui/submit-button";
 import type { Role } from "@/lib/database.types";
+import { LUNCH_MINUTE_OPTIONS } from "@/lib/validations";
 import { initials } from "@/lib/utils";
 
 export function ProfileForm({ fullName, email }: { fullName: string; email: string }) {
@@ -98,9 +99,9 @@ function LinkRow({ label, url }: { label: string; url: string }) {
   );
 }
 
-export function CompanyForm({ name, inviteUrl }: { name: string; inviteUrl: string }) {
+export function CompanyForm({ name, lunchMinutes }: { name: string; lunchMinutes: number }) {
   const [state, action] = useActionState(updateCompanyNameAction, null);
-  const { pending, error, run } = useConfirmAction();
+  const [lunchState, lunchAction] = useActionState(updateLunchMinutesAction, null);
   return (
     <div className="space-y-6">
       <form action={action} className="space-y-3">
@@ -116,30 +117,29 @@ export function CompanyForm({ name, inviteUrl }: { name: string; inviteUrl: stri
         <FormMessage state={state} />
       </form>
 
-      <div className="space-y-2">
-        <Label>Meghívó link</Label>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Input value={inviteUrl} readOnly className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
-          <CopyButton value={inviteUrl} label="Link másolása" className="shrink-0" />
-          <Button
-            variant="outline"
-            className="shrink-0"
-            disabled={pending}
-            onClick={() =>
-              run(
-                "Új meghívó linket generálsz. A régi link azonnal érvénytelen lesz (a már csatlakozott tagokat ez nem érinti). Folytatod?",
-                regenerateInviteCodeAction,
-              )
-            }
-          >
-            <RefreshCw className={pending ? "animate-spin" : undefined} /> Újragenerálás
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Bárki, aki megkapja ezt a linket, tagként csatlakozhat a céghez. Ha kiszivárgott, generálj újat.
-        </p>
-        {error && <p className="text-sm text-rose-700">{error}</p>}
-      </div>
+      <form action={lunchAction} className="space-y-3">
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-semibold">Ebédszünet hossza</legend>
+          <div className="flex flex-wrap gap-2" role="radiogroup">
+            {LUNCH_MINUTE_OPTIONS.map((m) => (
+              <label
+                key={m}
+                className="cursor-pointer rounded-full border-2 border-ink bg-white px-3.5 py-1.5 text-sm font-semibold has-[:checked]:bg-butter has-[:checked]:shadow-brutal-xs has-[:focus-visible]:outline has-[:focus-visible]:outline-[3px] has-[:focus-visible]:outline-offset-2"
+              >
+                <input type="radio" name="minutes" value={m} defaultChecked={m === lunchMinutes} className="sr-only" />
+                {m === 0 ? "Nincs" : `${m} perc`}
+              </label>
+            ))}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Mindenkire ugyanaz a hossz vonatkozik; azt, hogy mikor ebédelnek, a kollégák maguk állítják be.
+          </p>
+        </fieldset>
+        <FormMessage state={lunchState} />
+        <SubmitButton size="sm" pendingText="Mentés…">
+          Ebédszünet mentése
+        </SubmitButton>
+      </form>
     </div>
   );
 }

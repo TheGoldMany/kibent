@@ -8,8 +8,8 @@ import { LeaveRequestModal } from "@/components/calendar/LeaveRequestModal";
 import { requireMember } from "@/lib/auth";
 import { withUser } from "@/lib/db";
 import type { PatternDays, ScheduleLike } from "@/lib/schedule-resolver";
-import type { Role } from "@/lib/database.types";
-import { getRange, isISODate, todayISO, VIEW_MODES, type ViewMode } from "@/lib/dates";
+import type { Role, WorkHours } from "@/lib/database.types";
+import { getRange, isISODate, nowMinutesBudapest, todayISO, VIEW_MODES, type ViewMode } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Csapatnaptár" };
 
@@ -31,6 +31,7 @@ export default async function DashboardPage({
       members: { id: string; full_name: string; role: Role }[];
       patterns: (PatternDays & { user_id: string })[];
       schedules: ScheduleLike[];
+      work_hours: WorkHours[];
     }>(
       `select
          coalesce((select json_agg(json_build_object('id', id, 'full_name', full_name, 'role', role))
@@ -41,13 +42,17 @@ export default async function DashboardPage({
          coalesce((select json_agg(json_build_object('user_id', user_id, 'date', date, 'status', status,
                                                      'approval_status', approval_status,
                                                      'request_group_id', request_group_id, 'note', note))
-                     from schedules where company_id = $1 and date between $2 and $3), '[]') as schedules`,
+                     from schedules where company_id = $1 and date between $2 and $3), '[]') as schedules,
+         coalesce((select json_agg(json_build_object('user_id', user_id, 'weekday', weekday, 'start_time', start_time,
+                                                     'end_time', end_time, 'lunch_start', lunch_start))
+                     from work_hours where company_id = $1), '[]') as work_hours`,
       [ctx.company.id, start, end],
     ),
   );
   const rawMembers = data?.members ?? [];
   const patterns = data?.patterns ?? [];
   const schedules = data?.schedules ?? [];
+  const workHours = data?.work_hours ?? [];
 
   const collator = new Intl.Collator("hu");
   const members = [...rawMembers].sort((a, b) =>
@@ -92,6 +97,9 @@ export default async function DashboardPage({
         currentUserId={ctx.userId}
         isAdmin={isAdmin}
         today={today}
+        workHours={workHours}
+        lunchMinutes={ctx.company.lunch_minutes}
+        nowMinutes={nowMinutesBudapest()}
       />
 
       <StatusLegend />

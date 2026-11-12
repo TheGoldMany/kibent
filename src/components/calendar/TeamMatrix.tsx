@@ -13,10 +13,13 @@ import {
   type ScheduleLike,
 } from "@/lib/schedule-resolver";
 import { dayPhraseHu, formatHu, isWeekendISO } from "@/lib/dates";
-import type { Role, WorkStatus } from "@/lib/database.types";
+import type { Role, WorkHours, WorkStatus } from "@/lib/database.types";
+import { formatTime, minutesToTime, timeToMinutes } from "@/lib/validations";
 import { cn, initials } from "@/lib/utils";
 
 export type MatrixMember = { id: string; full_name: string; role: Role };
+
+export type DayHours = { work: string; lunch: string | null; lunchNow: boolean };
 
 type OptimisticChange = { date: string; status: WorkStatus | null };
 
@@ -28,6 +31,9 @@ export function TeamMatrix({
   currentUserId,
   isAdmin,
   today,
+  workHours = [],
+  lunchMinutes = 30,
+  nowMinutes,
 }: {
   members: MatrixMember[];
   days: string[];
@@ -36,6 +42,10 @@ export function TeamMatrix({
   currentUserId: string;
   isAdmin: boolean;
   today: string;
+  workHours?: WorkHours[];
+  lunchMinutes?: number;
+  /** Budapesti idő szerint hány perc telt el ma (az „Ebédel” jelzéshez). */
+  nowMinutes?: number;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -72,6 +82,36 @@ export function TeamMatrix({
   );
 
   const compact = days.length > 14;
+
+  // Munkaidők: felhasználó -> hétköznap (1–5) -> idősáv
+  const hoursIndex = useMemo(() => {
+    const idx = new Map<string, Map<number, WorkHours>>();
+    for (const w of workHours) {
+      const byDay = idx.get(w.user_id) ?? new Map<number, WorkHours>();
+      byDay.set(w.weekday, w);
+      idx.set(w.user_id, byDay);
+    }
+    return idx;
+  }, [workHours]);
+
+  function hoursFor(userId: string, day: string): DayHours | null {
+    const w = hoursIndex.get(userId)?.get(new Date(`${day}T12:00:00`).getDay());
+    if (!w) return null;
+    const lunchStart = w.lunch_start ? timeToMinutes(w.lunch_start) : null;
+    return {
+      work: `${formatTime(w.start_time)}–${formatTime(w.end_time)}`,
+      lunch:
+        lunchStart !== null && lunchMinutes > 0
+          ? `${minutesToTime(lunchStart)}–${minutesToTime(lunchStart + lunchMinutes)}`
+          : null,
+      lunchNow:
+        day === today &&
+        nowMinutes !== undefined &&
+        lunchStart !== null &&
+        nowMinutes >= lunchStart &&
+        nowMinutes < lunchStart + lunchMinutes,
+    };
+  }
   const best = bestOfficeDay(matrix, days, today);
   const bestPhrase = best ? dayPhraseHu(best.day, days.length > 7) : null;
   const total = members.length;
@@ -177,6 +217,9 @@ export function TeamMatrix({
             {members.map((member) => {
               const isOwn = member.id === currentUserId;
               const row = matrix.get(member.id)!;
+              const todayStatus = row.get(today)?.status;
+              const atLunch =
+                (todayStatus === "office" || todayStatus === "remote") && !!hoursFor(member.id, today)?.lunchNow;
               return (
                 <tr key={member.id} className={cn(isOwn && "bg-butter/25")}>
                   <th
@@ -198,10 +241,15 @@ export function TeamMatrix({
                       </span>
                       <span className="min-w-0">
                         <span className="block max-w-[6.5rem] truncate font-semibold sm:max-w-[11rem] sm:text-[15px]">{member.full_name}</span>
-                        {(isOwn || member.role === "admin") && (
-                          <span className="mt-0.5 flex gap-1 text-[11px] font-medium">
+                        {(isOwn || member.role === "admin" || atLunch) && (
+                          <span className="mt-0.5 flex flex-wrap gap-1 text-[11px] font-medium">
                             {isOwn && <span className="rounded-full border border-ink bg-butter px-1.5">Te</span>}
                             {member.role === "admin" && <span className="rounded-full border border-ink bg-lilac px-1.5">Admin</span>}
+                            {atLunch && (
+                              <span className="inline-flex items-center gap-0.5 rounded-full border border-ink bg-bubblegum px-1.5">
+                                <UtensilsCrossed aria-hidden className="h-3 w-3" /> Ebédel
+                              </span>
+                            )}
                           </span>
                         )}
                       </span>
@@ -222,6 +270,7 @@ export function TeamMatrix({
                         showNote={isOwn || isAdmin}
                         onToggle={isOwn && next ? () => change(day, next) : undefined}
                         onReset={isOwn ? () => change(day, null) : undefined}
+                        hours={hoursFor(member.id, day)}
                       />
                     );
                   })}

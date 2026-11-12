@@ -7,6 +7,7 @@ import { Logo } from "@/components/layout/Logo";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { StatusPill } from "@/components/calendar/StatusPill";
 import { getSessionContext, safeNext } from "@/lib/auth";
+import { getInvitePreview, inviteTokenFromPath } from "@/lib/invitations";
 
 export const metadata: Metadata = { title: "Belépés" };
 
@@ -37,7 +38,9 @@ export default async function LoginPage({
   const next = safeNext(params.next);
   if (await getSessionContext()) redirect(next);
 
-  const isInvite = next.startsWith("/invite/");
+  const inviteToken = inviteTokenFromPath(next);
+  const invite = inviteToken ? await getInvitePreview(inviteToken) : null;
+  const isInvite = !!invite && !invite.accepted && !invite.expired;
 
   return (
     <div className="min-h-screen overflow-x-clip bg-cotton">
@@ -89,17 +92,21 @@ export default async function LoginPage({
               </span>
               <div className="rounded-t-[14px] border-b-2 border-ink bg-butter px-6 py-6 pr-24 sm:px-8 sm:pr-28">
                 <h2 className="font-display text-4xl font-bold">
-                  {isInvite ? "Csatlakozz a csapatodhoz" : "Belépés"}
+                  {isInvite ? `Csatlakozz: ${invite.companyName}` : "Belépés"}
                 </h2>
                 <p className="mt-2 text-base">
                   {isInvite
-                    ? "Lépj be vagy regisztrálj, és automatikusan bekerülsz a cégbe."
+                    ? invite.hasAccount
+                      ? `Lépj be a ${invite.email} címmel, és automatikusan bekerülsz a csapatba.`
+                      : `Regisztrálj a ${invite.email} címmel, és belépés után automatikusan a csapatban leszel.`
                     : "Új vagy? Válaszd a Regisztrációt, és pár perc alatt kész a céged naptára."}
                 </p>
               </div>
               <div className="p-6 sm:p-8">
                 <LoginForms
                   next={next}
+                  defaultEmail={isInvite ? invite.email : undefined}
+                  defaultMode={isInvite && !invite.hasAccount ? "signup" : "password"}
                   initialError={params.error === "link" ? "A belépő link érvénytelen vagy lejárt. Kérj újat!" : undefined}
                 />
               </div>

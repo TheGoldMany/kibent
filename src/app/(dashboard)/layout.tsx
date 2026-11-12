@@ -4,7 +4,6 @@ import { MainNav } from "@/components/layout/MainNav";
 import { InviteButton } from "@/components/layout/InviteButton";
 import { UserMenu } from "@/components/layout/UserMenu";
 import { requireMember } from "@/lib/auth";
-import { siteUrl } from "@/lib/utils";
 
 // Session-függő oldalak: mindig kérésidőben renderelődnek (Neon Auth).
 export const dynamic = "force-dynamic";
@@ -22,7 +21,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <span className="hidden truncate font-display text-lg italic lg:inline">{ctx.company.name}</span>
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
             <MainNav pendingCount={pendingCount} />
-            {isAdmin && <InviteButton inviteUrl={`${siteUrl()}/invite/${ctx.company.invite_code}`} />}
+            {isAdmin && <InviteButton />}
             <UserMenu
               fullName={ctx.profile.full_name}
               email={ctx.profile.email}

@@ -124,3 +124,16 @@ export function dayPhraseHu(value: string, withDate: boolean): string {
   const d = parseISODate(value);
   return `${format(d, "MMM", { locale: hu })} ${dayOfMonthOnHu(d.getDate())}, ${weekdayOnHu(value)}`;
 }
+
+/** Hány perc telt el ma éjfél óta, budapesti idő szerint. */
+export function nowMinutesBudapest(now: Date = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: APP_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const h = Number(parts.find((p) => p.type === "hour")?.value ?? 0);
+  const m = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
+  return h * 60 + m;
+}
