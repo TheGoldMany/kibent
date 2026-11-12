@@ -26,6 +26,7 @@ function authErrorHu(message: string | undefined): string {
   if (/password (is )?too short/i.test(message)) return "A jelszó legalább 8 karakter legyen.";
   if (/password (is )?too long/i.test(message)) return "A jelszó túl hosszú.";
   if (/invalid email/i.test(message)) return "Érvénytelen email cím.";
+  if (/user not found/i.test(message)) return "Ehhez az email címhez még nincs fiók. Előbb regisztrálj a Regisztráció fülön.";
   if (/already (registered|exists)/i.test(message)) return "Ezzel az email címmel már regisztráltak. Jelentkezz be!";
   if (/rate limit|too many/i.test(message)) return "Túl sok próbálkozás. Várj egy kicsit, és próbáld újra.";
   if (/invalid origin|untrusted origin/i.test(message)) {

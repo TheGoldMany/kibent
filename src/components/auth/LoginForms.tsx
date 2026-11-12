@@ -72,7 +72,8 @@ export function LoginForms({ next, initialError }: { next: string; initialError?
           <input type="hidden" name="next" value={next} />
           <Field id="email" label="Email cím" type="email" autoComplete="email" />
           <p className="text-sm text-muted-foreground">
-            Jelszó nélkül: küldünk egy egyszer használatos belépő linket. Ha még nincs fiókod, automatikusan létrejön.
+            Jelszó nélkül: küldünk egy egyszer használatos belépő linket a már regisztrált email címedre. Ha még nincs
+            fiókod, előbb válaszd a Regisztrációt.
           </p>
           <FormMessage state={magicState} />
           <SubmitButton size="lg" className="w-full" pendingText="Küldés…">
