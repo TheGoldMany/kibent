@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { betterAuth } from "better-auth";
 import { nextCookies, toNextJsHandler } from "better-auth/next-js";
 import { emailOTP } from "better-auth/plugins";
+import { PostgresDialect } from "kysely";
 import { createPool } from "@/lib/db";
 import { otpEmail, sendEmail } from "@/lib/email";
 import { ensureAuthSchema } from "@/lib/auth/bootstrap";
@@ -47,7 +48,13 @@ function createAuth() {
     baseURL: siteUrl(),
     basePath: "/api/auth",
     secret,
-    database: createPool({ searchPath: "better_auth", max: 3 }),
+    // A Neon pooler nem enged kapcsolódáskori search_path-ot, ezért a séma-minősítést
+    // maga a Better Auth végzi minden lekérdezésben.
+    database: {
+      dialect: new PostgresDialect({ pool: createPool({ max: 3 }) }),
+      type: "postgres",
+      schemaName: "better_auth",
+    },
     trustedOrigins: trustedOrigins(),
     advanced: { database: { generateId: "uuid" } },
     emailAndPassword: {
