@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Archivo, Bodoni_Moda } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { siteUrl } from "@/lib/utils";
 import "./globals.css";
@@ -45,6 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="hu" className={`${sans.variable} ${display.variable}`}>
       <body className="min-h-screen">
         <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
