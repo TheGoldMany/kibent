@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withSystem } from "@/lib/db";
 import { hasV2Schema } from "@/lib/schema";
+import { isEmailConfigured } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,8 @@ export async function GET() {
         dbConnectMs: Math.round(timings.connectMs),
         // Le van-e futtatva a 0002-es migráció (munkaidő, ebédszünet, meghívók)
         schema: (await hasV2Schema()) ? "v2" : "v1",
+        // Be van-e állítva az emailküldés (csak igen/nem, a kulcsot nem adja ki)
+        email: isEmailConfigured(),
       },
       { headers: { "Cache-Control": "no-store" } },
     );
