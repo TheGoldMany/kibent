@@ -56,12 +56,12 @@ export function WorkHoursForm({ initial, lunchMinutes }: { initial: WorkHours[];
             <fieldset
               key={weekday}
               className={cn(
-                "grid items-end gap-3 rounded-xl border-2 border-ink p-3 sm:grid-cols-[8.5rem_1fr_1fr_1.3fr]",
+                "grid grid-cols-3 items-end gap-2 rounded-xl border-2 border-ink p-3 sm:grid-cols-[8.5rem_1fr_1fr_1.3fr] sm:gap-3",
                 row.enabled ? "bg-white" : "bg-lilac-soft",
               )}
             >
               <legend className="sr-only">{label}</legend>
-              <label className="flex cursor-pointer items-center gap-2 self-center font-semibold">
+              <label className="col-span-3 flex cursor-pointer items-center gap-2 self-center font-semibold sm:col-span-1">
                 <input
                   type="checkbox"
                   name={`d${weekday}_enabled`}
@@ -82,7 +82,7 @@ export function WorkHoursForm({ initial, lunchMinutes }: { initial: WorkHours[];
                   <TimeField label="Vége" name={`d${weekday}_end`} value={row.end} onChange={(v) => update(weekday, { end: v })} />
                   <div className="space-y-1">
                     <TimeField
-                      label="Ebéd kezdete"
+                      label="Ebéd"
                       name={`d${weekday}_lunch`}
                       value={row.lunch}
                       onChange={(v) => update(weekday, { lunch: v })}
@@ -90,14 +90,14 @@ export function WorkHoursForm({ initial, lunchMinutes }: { initial: WorkHours[];
                     />
                   </div>
                   {end && lunchMinutes > 0 && (
-                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground sm:col-span-3 sm:col-start-2">
+                    <p className="col-span-3 flex items-center gap-1.5 text-xs text-muted-foreground sm:col-start-2">
                       <UtensilsCrossed aria-hidden className="h-3.5 w-3.5" />
                       Ebédszünet {formatTime(row.lunch)}–{end}
                     </p>
                   )}
                 </>
               ) : (
-                <p className="text-sm text-muted-foreground sm:col-span-3">Ezen a napon nem dolgozol.</p>
+                <p className="col-span-3 text-sm text-muted-foreground">Ezen a napon nem dolgozol.</p>
               )}
             </fieldset>
           );
@@ -147,7 +147,7 @@ function TimeField({
         required={required}
         step={300}
         onChange={(e) => onChange(e.target.value)}
-        className="font-normal tabular-nums"
+        className="px-2 font-normal tabular-nums sm:px-3.5"
       />
     </label>
   );

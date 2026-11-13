@@ -52,6 +52,22 @@ Vercel → **Storage → Blob → Create**, és válaszd a **Private** hozzáfé
 vercel env pull .env.local
 ```
 
+### 2b. Márkás auth emailek (megerősítő kód, belépő kód, jelszó-visszaállítás)
+
+A Neon Auth alapból a saját, általános leveleit küldi. Webhookkal a Kibent-dizájnú levelek mennek ki helyettük a Resenden keresztül (a `RESEND_API_KEY` és az `EMAIL_FROM` legyen beállítva).
+
+A webhook végpont: `https://<domain>/api/webhooks/neon-auth`. Ellenőrzi a Neon Ed25519 aláírását, a 5 percnél régebbi kéréseket elutasítja, és ismételt kézbesítésnél nem küld újra levelet.
+
+Bekapcsolás a Neon API-val (a `project_id`, `branch_id` és az API kulcs a Neon konzolban található):
+
+```bash
+curl -X PUT "https://console.neon.tech/api/v2/projects/<project_id>/branches/<branch_id>/auth/webhooks" \
+  -H "Authorization: Bearer $NEON_API_KEY" -H "Content-Type: application/json" \
+  -d '{"enabled": true, "webhook_url": "https://<domain>/api/webhooks/neon-auth", "enabled_events": ["send.otp", "send.magic_link"], "timeout_seconds": 5}'
+```
+
+Feliratkozás után a Neon **nem** küldi a saját levelét – ezért csak akkor kapcsold be, ha a Resend már működik.
+
 ### 3. Környezeti változók
 
 ```bash

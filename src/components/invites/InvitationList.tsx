@@ -34,10 +34,15 @@ export function InvitationList({ invitations, baseUrl }: { invitations: CompanyI
           return (
             <li key={inv.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{inv.email}</p>
+                <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                  <span className="truncate">{inv.email}</span>
+                  {expired && (
+                    <span className="rounded-full border-2 border-ink bg-bubblegum px-2 text-[11px] font-bold">Lejárt</span>
+                  )}
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  Meghívva: {dateFmt.format(new Date(inv.created_at))}.{" "}
-                  {expired ? "Lejárt." : `Érvényes eddig: ${dateFmt.format(new Date(inv.expires_at))}.`}
+                  Meghívva: {dateFmt.format(new Date(inv.created_at))}{" "}
+                  {expired ? "– küldd újra, ha még aktuális." : `Érvényes: ${dateFmt.format(new Date(inv.expires_at))}`}
                 </p>
               </div>
               <CopyButton value={`${baseUrl}/invite/${inv.token}`} label="Link" size="sm" />
