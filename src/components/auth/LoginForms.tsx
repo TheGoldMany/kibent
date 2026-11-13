@@ -106,7 +106,7 @@ export function LoginForms({
             label="Email cím"
             type="email"
             autoComplete="email"
-            defaultValue={verifiedNotice?.verified ?? defaultEmail}
+            defaultValue={signInState?.values?.email ?? verifiedNotice?.verified ?? defaultEmail}
           />
           <Field id="password" label="Jelszó" type="password" autoComplete="current-password" />
           <FormMessage state={signInState} />
@@ -119,8 +119,20 @@ export function LoginForms({
       {mode === "signup" && (
         <form action={signUp} className="space-y-4">
           <input type="hidden" name="next" value={next} />
-          <Field id="fullName" label="Teljes név" autoComplete="name" placeholder="pl. Kovács Anna" />
-          <Field id="email" label="Email cím" type="email" autoComplete="email" defaultValue={defaultEmail} />
+          <Field
+            id="fullName"
+            label="Teljes név"
+            autoComplete="name"
+            placeholder="pl. Kovács Anna"
+            defaultValue={signUpState?.values?.fullName}
+          />
+          <Field
+            id="email"
+            label="Email cím"
+            type="email"
+            autoComplete="email"
+            defaultValue={signUpState?.values?.email ?? defaultEmail}
+          />
           <Field id="password" label="Jelszó (min. 8 karakter)" type="password" autoComplete="new-password" minLength={8} />
           <FormMessage state={signUpState} />
           <SubmitButton size="lg" className="w-full" pendingText="Fiók létrehozása…">
@@ -134,7 +146,13 @@ export function LoginForms({
           <SignInCodeStep email={sendCodeState.codeSentTo} next={next} onBack={() => setMode("password")} />
         ) : (
           <form action={sendCode} className="space-y-4">
-            <Field id="email" label="Email cím" type="email" autoComplete="email" defaultValue={defaultEmail} />
+            <Field
+              id="email"
+              label="Email cím"
+              type="email"
+              autoComplete="email"
+              defaultValue={sendCodeState?.values?.email ?? defaultEmail}
+            />
             <p className="text-sm text-muted-foreground">
               Jelszó nélkül: küldünk egy egyszer használatos kódot a már regisztrált email címedre. Ha még nincs
               fiókod, előbb válaszd a Regisztrációt.

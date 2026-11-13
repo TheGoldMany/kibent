@@ -1,4 +1,4 @@
--- Kibent RLS / üzleti szabály tesztek (helyi Postgres + _neon_stub.sql)
+-- Kibent RLS / üzleti szabály tesztek (helyi Postgres, Better Auth sémával)
 -- Futtatás: npm run test:db  (db/tests/run.sh)
 \set ON_ERROR_STOP on
 set client_min_messages = notice;
@@ -28,16 +28,28 @@ end $$;
 grant execute on all functions in schema pg_temp to kibent_app;
 
 -- Felhasználók
-insert into neon_auth."user" (id, email, name) values
-  ('00000000-0000-0000-0000-00000000000a', 'anna@acme.hu', 'Kovács Anna'),
-  ('00000000-0000-0000-0000-00000000000b', 'bela@acme.hu', ''),
-  ('00000000-0000-0000-0000-00000000000c', 'cili@other.hu', 'Szabó Cili'),
-  ('00000000-0000-0000-0000-00000000000d', 'dani@acme.hu', 'Tóth Dani');
+insert into better_auth."user" (id, email, name, "emailVerified") values
+  ('00000000-0000-0000-0000-00000000000a', 'anna@acme.hu', 'Kovács Anna', true),
+  ('00000000-0000-0000-0000-00000000000b', 'bela@acme.hu', '', true),
+  ('00000000-0000-0000-0000-00000000000c', 'cili@other.hu', 'Szabó Cili', true),
+  ('00000000-0000-0000-0000-00000000000d', 'dani@acme.hu', 'Tóth Dani', true);
 
-select pg_temp.expect_eq((select count(*) from public.profiles), 4, 'trigger létrehozta a profilokat');
+-- Profilok az első belépéskor (ensure_profile)
+set role kibent_app;
+set app.user_id = '00000000-0000-0000-0000-00000000000a'; select public.ensure_profile('anna@acme.hu', 'Kovács Anna');
+set app.user_id = '00000000-0000-0000-0000-00000000000b'; select public.ensure_profile('bela@acme.hu', '');
+set app.user_id = '00000000-0000-0000-0000-00000000000c'; select public.ensure_profile('cili@other.hu', 'Szabó Cili');
+set app.user_id = '00000000-0000-0000-0000-00000000000d'; select public.ensure_profile('dani@acme.hu', 'Tóth Dani');
+select public.ensure_profile('dani@acme.hu', 'Tóth Dani'); -- idempotens
+reset role;
+
+select pg_temp.expect_eq((select count(*) from public.profiles), 4, 'ensure_profile létrehozta a profilokat');
 select pg_temp.expect_eq(
   (select count(*) from public.profiles where id = '00000000-0000-0000-0000-00000000000b' and full_name = 'bela'),
   1, 'full_name fallback email előtagra');
+select pg_temp.expect_fail(
+  $$insert into public.profiles (id, email, full_name) values (gen_random_uuid(), 'x@y.hu', 'X')$$,
+  'profil csak létező fiókhoz tartozhat');
 
 -- ---------------------------------------------------------------- Onboarding
 set role kibent_app;
@@ -183,7 +195,7 @@ select pg_temp.expect_eq((select count(*) from public.schedules), 0, 'eltávolí
 select pg_temp.expect_eq((select count(*) from public.medical_documents), 0, 'eltávolított tag cégadatot nem lát');
 
 select pg_temp.expect_fail($$insert into public.companies (name) values ('Kalóz Kft.')$$, 'kibent_app nem hozhat létre céget közvetlenül');
-select pg_temp.expect_fail($$select * from neon_auth."user"$$, 'kibent_app nem olvassa a neon_auth sémát');
+select pg_temp.expect_fail($$select * from better_auth."user"$$, 'kibent_app nem olvassa az auth sémát');
 set app.user_id = '';
 select pg_temp.expect_eq((select count(*) from public.schedules), 0, 'user_id nélkül semmi sem látszik');
 
@@ -286,6 +298,26 @@ reset role;
 select pg_temp.expect_eq((select (public.rate_limit_hit('teszt', 2, 60))::int)::bigint, 1, 'korlátozó: 1. kérés átmegy');
 select pg_temp.expect_eq((select (public.rate_limit_hit('teszt', 2, 60))::int)::bigint, 1, 'korlátozó: 2. kérés átmegy');
 select pg_temp.expect_eq((select (public.rate_limit_hit('teszt', 2, 60))::int)::bigint, 0, 'korlátozó: 3. kérés tiltva');
+
+-- ---------------------------------------------------------------- 0004: régi (Neon Auth) profil átvétele
+reset role;
+set app.user_id = '';
+alter table public.profiles drop constraint profiles_id_better_auth_fkey;
+insert into public.profiles (id, company_id, email, full_name, role)
+  values ('00000000-0000-0000-0000-0000000000ee', (select acme_id from t_ctx2), 'Regi@Acme.hu', 'Régi Réka', 'admin');
+insert into public.schedules (company_id, user_id, date, status)
+  values ((select acme_id from t_ctx2), '00000000-0000-0000-0000-0000000000ee', '2026-12-07', 'office');
+alter table public.profiles add constraint profiles_id_better_auth_fkey
+  foreign key (id) references better_auth."user" (id) on delete cascade on update cascade not valid;
+insert into better_auth."user" (id, email, name, "emailVerified")
+  values ('00000000-0000-0000-0000-0000000000ef', 'regi@acme.hu', 'Régi Réka', true);
+set role kibent_app;
+set app.user_id = '00000000-0000-0000-0000-0000000000ef';
+select public.ensure_profile('regi@acme.hu', 'Régi Réka');
+select pg_temp.expect_eq((select count(*) from public.profiles where id = app.uid() and role = 'admin' and company_id is not null), 1, 'régi profil átvéve (cég és szerepkör marad)');
+select pg_temp.expect_eq((select count(*) from public.schedules where user_id = app.uid() and date = '2026-12-07'), 1, 'a beosztás is az új fiókhoz került');
+reset role;
+select pg_temp.expect_eq((select count(*) from public.profiles where id = '00000000-0000-0000-0000-0000000000ee'), 0, 'a régi azonosító megszűnt');
 
 reset role;
 \echo 'MINDEN RLS TESZT SIKERES'

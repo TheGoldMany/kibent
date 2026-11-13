@@ -1,23 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getAuth } from "@/lib/auth/server";
+import { getSessionCookie } from "better-auth/cookies";
 
 /**
- * Next.js 16 proxy (korábban middleware): a védett oldalakat a Neon Auth
- * session nélkül a /login-ra irányítja, és szükség esetén frissíti a sessiont.
- * A publikus útvonalakat (login, meghívó, iCal feed, auth API) a matcher kihagyja.
+ * Next.js 16 proxy: munkamenet-süti nélkül a védett oldalak a /login-ra irányítanak.
+ * Ez csak gyors előszűrés – a tényleges jogosultságot minden oldal a szerveren ellenőrzi.
  */
-export async function proxy(request: NextRequest) {
-  const response = await getAuth().middleware({ loginUrl: "/login" })(request);
-  // Visszatérési cél megőrzése a bejelentkezés után
-  const location = response.headers.get("location");
-  if (location && response.status >= 300 && response.status < 400) {
-    const target = new URL(location, request.url);
-    if (target.pathname === "/login" && request.nextUrl.pathname !== "/") {
-      target.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
-      return NextResponse.redirect(target, { headers: response.headers });
-    }
-  }
-  return response;
+export function proxy(request: NextRequest) {
+  if (getSessionCookie(request)) return NextResponse.next();
+  const url = new URL("/login", request.url);
+  const { pathname, search } = request.nextUrl;
+  if (pathname !== "/") url.searchParams.set("next", `${pathname}${search}`);
+  return NextResponse.redirect(url);
 }
 
 export const config = {

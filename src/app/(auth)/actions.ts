@@ -20,7 +20,7 @@ import type { FormState } from "@/components/ui/form-message";
 
 function authErrorHu(message: string | undefined): string {
   if (!message) return "A bejelentkezés nem sikerült. Próbáld újra.";
-  // Supabase és Better Auth (Neon Auth) szövegezések
+  // Better Auth szövegezések
   if (/invalid login credentials|invalid email or password|invalid password/i.test(message)) {
     return "Hibás email cím vagy jelszó.";
   }
@@ -35,9 +35,9 @@ function authErrorHu(message: string | undefined): string {
   if (/already (registered|exists)/i.test(message)) return "Ezzel az email címmel már regisztráltak. Jelentkezz be!";
   if (/rate limit|too many/i.test(message)) return "Túl sok próbálkozás. Várj egy kicsit, és próbáld újra.";
   if (/invalid origin|untrusted origin/i.test(message)) {
-    // Beállítási hiba: az oldal címe nincs a Neon Auth megbízható domainjei között.
-    console.error("[auth] Invalid origin – vedd fel a NEXT_PUBLIC_SITE_URL-t a Neon Auth Trusted domains listájára.");
-    return "A belépés erről a címről még nincs engedélyezve. Az üzemeltetőnek fel kell vennie a domaint a Neon Auth beállításaiban.";
+    // Beállítási hiba: az oldal címe nincs az engedélyezett címek között.
+    console.error("[auth] Invalid origin – állítsd be a NEXT_PUBLIC_SITE_URL-t vagy az AUTH_TRUSTED_ORIGINS-t.");
+    return "A belépés erről a címről még nincs engedélyezve. Próbáld a fő címről, vagy szólj az üzemeltetőnek.";
   }
   return message;
 }
@@ -51,6 +51,8 @@ export type AuthState =
       codeSentTo?: string;
       /** A megerősítés kész, de nincs session – jelszóval kell belépni. */
       verified?: string;
+      /** Hiba esetén a beírt értékek (a React 19 action után üríti az űrlapot). Jelszót soha. */
+      values?: { email?: string; fullName?: string };
     })
   | null;
 
@@ -67,8 +69,9 @@ const otpSchema = z.object({
 });
 
 export async function signInAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  const values = { email: String(formData.get("email") ?? "") };
   const parsed = loginSchema.safeParse({ email: formData.get("email"), password: formData.get("password") });
-  if (!parsed.success) return { error: firstError(parsed.error) };
+  if (!parsed.success) return { error: firstError(parsed.error), values };
 
   const { error } = await getAuth().signIn.email(parsed.data);
   if (error) {
@@ -80,19 +83,20 @@ export async function signInAction(_prev: AuthState, formData: FormData): Promis
         verifyEmail: parsed.data.email,
       };
     }
-    return { error: authErrorHu(error.message) };
+    return { error: authErrorHu(error.message), values };
   }
 
   redirect(safeNext(formData.get("next")));
 }
 
 export async function signUpAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  const values = { email: String(formData.get("email") ?? ""), fullName: String(formData.get("fullName") ?? "") };
   const parsed = signupSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
     fullName: formData.get("fullName"),
   });
-  if (!parsed.success) return { error: firstError(parsed.error) };
+  if (!parsed.success) return { error: firstError(parsed.error), values };
 
   const next = safeNext(formData.get("next"));
   const { data, error } = await getAuth().signUp.email({
@@ -101,7 +105,7 @@ export async function signUpAction(_prev: AuthState, formData: FormData): Promis
     name: parsed.data.fullName,
     callbackURL: `${siteUrl()}${next}`,
   });
-  if (error) return { error: authErrorHu(error.message) };
+  if (error) return { error: authErrorHu(error.message), values };
 
   // Ha az email megerősítés ki van kapcsolva, a regisztráció után azonnal van session.
   // (Better Auth: a token null, ha email megerősítés szükséges – ilyenkor kódot küld.)
@@ -138,12 +142,13 @@ export async function resendCodeAction(
 
 /** Jelszó nélküli belépés, 1. lépés: kód küldése a regisztrált email címre. */
 export async function sendSignInCodeAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  const values = { email: String(formData.get("email") ?? "") };
   const parsed = magicLinkSchema.safeParse({ email: formData.get("email") });
-  if (!parsed.success) return { error: firstError(parsed.error) };
-  if (!(await allowCodeEmail(parsed.data.email))) return { error: RATE_LIMIT_MESSAGE };
+  if (!parsed.success) return { error: firstError(parsed.error), values };
+  if (!(await allowCodeEmail(parsed.data.email))) return { error: RATE_LIMIT_MESSAGE, values };
 
   const { error } = await getAuth().emailOtp.sendVerificationOtp({ email: parsed.data.email, type: "sign-in" });
-  if (error) return { error: authErrorHu(error.message) };
+  if (error) return { error: authErrorHu(error.message), values };
   return { codeSentTo: parsed.data.email };
 }
 

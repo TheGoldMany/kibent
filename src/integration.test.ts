@@ -5,7 +5,7 @@
  *
  * Futtatás: bash db/tests/run-integration.sh
  * (Neon-szerű jogosultságokkal: TEST_DATABASE_URL = korlátozott tulajdonos,
- *  TEST_SETUP_DATABASE_URL = superuser a neon_auth tesztadatokhoz.)
+ *  TEST_SETUP_DATABASE_URL = superuser az auth tesztadatokhoz.)
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { Pool } from "pg";
@@ -15,7 +15,7 @@ const run = DB ? describe : describe.skip;
 
 // ---- helyettesítések -------------------------------------------------------
 const session = { userId: null as string | null, verified: true };
-// A session email címe egyezik a neon_auth."user" címmel (mint élesben)
+// A session email címe egyezik a better_auth."user" címmel (mint élesben)
 const SESSION_EMAILS: Record<string, string> = {
   "00000000-0000-0000-0000-0000000000a1": "anna@acme.hu",
   "00000000-0000-0000-0000-0000000000b1": "bela@acme.hu",
@@ -74,21 +74,18 @@ run("integráció (helyi Postgres)", () => {
   beforeAll(async () => {
     process.env.DATABASE_URL = DB;
     process.env.NEXT_PUBLIC_SITE_URL = "https://kibent.test";
-    // A tesztadatok beszúrásához (neon_auth."user") külön, magasabb jogú kapcsolat is megadható.
+    // A tesztadatok beszúrásához (better_auth."user") külön, magasabb jogú kapcsolat is megadható.
     pool = new Pool({ connectionString: process.env.TEST_SETUP_DATABASE_URL ?? DB });
     await pool.query(
-      `insert into neon_auth."user" (id, email, name) values
-        ($1, 'anna@acme.hu', 'Kovács Anna'), ($2, 'bela@acme.hu', 'Nagy Béla'), ($3, 'dani@acme.hu', 'Tóth Dani')`,
+      `insert into better_auth."user" (id, email, name, "emailVerified") values
+        ($1, 'anna@acme.hu', 'Kovács Anna', true), ($2, 'bela@acme.hu', 'Nagy Béla', true), ($3, 'dani@acme.hu', 'Tóth Dani', true)`,
       [ANNA, BELA, DANI],
     );
   });
 
   it("profil trigger nélkül: az első belépés létrehozza (ensure_profile)", async () => {
     const ERIK = "00000000-0000-0000-0000-0000000000e1";
-    const hasTrigger = (await pool.query("select 1 from pg_trigger where tgname = 'on_auth_user_created'")).rowCount;
-    if (hasTrigger) await pool.query('alter table neon_auth."user" disable trigger on_auth_user_created');
-    await pool.query(`insert into neon_auth."user" (id, email, name) values ($1, 'e1@test.hu', 'Erik')`, [ERIK]);
-    if (hasTrigger) await pool.query('alter table neon_auth."user" enable trigger on_auth_user_created');
+    await pool.query(`insert into better_auth."user" (id, email, name, "emailVerified") values ($1, 'e1@test.hu', 'Erik', true)`, [ERIK]);
     expect((await pool.query("select 1 from profiles where id = $1", [ERIK])).rowCount).toBe(0);
 
     const { getSessionContext } = await import("@/lib/auth");

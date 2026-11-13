@@ -6,7 +6,6 @@ DB=kibent_test
 PSQL=(psql -v ON_ERROR_STOP=1 -q -X -t -o /dev/null)
 dropdb --if-exists "$DB" >/dev/null 2>&1 || true
 createdb "$DB"
-"${PSQL[@]}" -d "$DB" -f "$DIR/_neon_stub.sql"
 for f in "$DIR"/../migrations/*.sql; do
   "${PSQL[@]}" -d "$DB" -f "$f"
 done

@@ -2,7 +2,7 @@
 
 Ingyenes, multi-tenant csapatnaptár KKV-knak és startupoknak: ki van bent az irodában, ki dolgozik otthonról, ki van szabadságon vagy betegszabadságon.
 
-**Stack:** Next.js 16 (App Router, Server Actions) · TypeScript strict · Tailwind + shadcn/ui · **Neon** Postgres (projekt: `kibent-oltp`) + RLS · **Neon Auth** · **Vercel Blob** (privát) · `ical-generator` · `date-fns` (hu) · `zod`
+**Stack:** Next.js 16 (App Router, Server Actions) · TypeScript strict · Tailwind + shadcn/ui · **Neon** Postgres (projekt: `kibent-oltp`) + RLS · **Better Auth** (saját, az alkalmazáson belül) · **Resend** · **Vercel Blob** (privát) · `ical-generator` · `date-fns` (hu) · `zod`
 
 ## Funkciók
 
@@ -11,7 +11,7 @@ Ingyenes, multi-tenant csapatnaptár KKV-knak és startupoknak: ki van bent az i
 - **Ismétlődő heti rutin:** alapértelmezett H–P beosztás, amelyet a napi bejegyzések felülírnak.
 - **Szabadság:** időszak kiválasztása (a hétvégéket kihagyja), adminisztrátori jóváhagyás egy kattintással, „Függőben” jelzés a naptárban.
 - **Betegszabadság:** nincs jóváhagyás; az orvosi igazolás (PDF/JPG/PNG, max. 10 MB) privát Vercel Blob tárolóba kerül, és **csak a feltöltő meg az adminok** láthatják, 60 másodpercig érvényes aláírt URL-lel.
-- **Belépés:** email + jelszó, regisztráció vagy magic link (Neon Auth).
+- **Belépés:** email + jelszó (regisztráció 6 jegyű emailes kóddal), vagy jelszó nélkül emailes kóddal. Saját Better Auth, a felhasználók a Neon adatbázis `better_auth` sémájában.
 - **Meghívás email címre:** az admin beírja a kollégák címét, mindenki személyes linket kap emailben; regisztráció és belépés után automatikusan a csapatban van (csak a meghívott címmel). Szerepkörök kezelése, tagok eltávolítása.
 - **Munkaidő és ebédszünet:** mindenki maga állítja be napi bontásban; az ebédszünet hosszát az admin adja meg. A naptárban látszik, ki ebédel éppen.
 - **Élő iCal feed:** `/api/ical/{token}/calendar.ics` (opcionálisan `?team=1`), Google, Apple és Outlook naptárral is működik.
@@ -21,17 +21,15 @@ Ingyenes, multi-tenant csapatnaptár KKV-knak és startupoknak: ki van bent az i
 ### 1. Neon (`kibent-oltp`)
 
 1. A [Neon konzolban](https://console.neon.tech) nyisd meg a **kibent-oltp** projektet.
-2. **Auth** fül → kapcsold be a **Neon Auth**-ot. Ez létrehozza a `neon_auth` sémát, és erre a migráció hivatkozik.
-   - Engedélyezd az *Email & Password* és a *Magic link* belépést.
-   - A *Trusted domains / Redirect URLs* közé vedd fel: `http://localhost:3000` és az éles domained.
-3. Másold ki a **Base URL**-t (`NEON_AUTH_BASE_URL`) és a **pooled** connection stringet (`DATABASE_URL`).
+2. A bejelentkezést az alkalmazás maga kezeli (Better Auth); a Neon Auth-ot nem kell bekapcsolni. A `better_auth` sémát (0004) az alkalmazás az első induláskor automatikusan létrehozza.
+3. Másold ki a **pooled** connection stringet (`DATABASE_URL`).
 4. Futtasd a migrációkat sorrendben (`0001_init.sql`, `0002_work_hours_invitations.sql`): vagy a Neon **SQL Editorban** (másold be a fájlok tartalmát), vagy `psql`-lel:
 
 ```bash
 DATABASE_URL='postgresql://neondb_owner:…@…-pooler…neon.tech/neondb?sslmode=require' npm run db:migrate
 ```
 
-Ha a `neondb_owner` nem hozhat létre triggert a Neon Auth `neon_auth."user"` tábláján, a migráció egy `WARNING`-gal továbbmegy. Ez nem hiba: a profilt ilyenkor az alkalmazás hozza létre az első belépéskor (`public.ensure_profile`).
+A migrációk a régi Neon Auth sémára vonatkozó lépéseket `WARNING`-gal kihagyják, ha az nem létezik vagy nincs rá jog – ez nem hiba.
 
 Ellenőrzés a migráció után (várt eredmény: `5 | 16 | 0 vagy 1 | 1`):
 
@@ -52,22 +50,6 @@ Vercel → **Storage → Blob → Create**, és válaszd a **Private** hozzáfé
 vercel env pull .env.local
 ```
 
-### 2b. Márkás auth emailek (megerősítő kód, belépő kód, jelszó-visszaállítás)
-
-A Neon Auth alapból a saját, általános leveleit küldi. Webhookkal a Kibent-dizájnú levelek mennek ki helyettük a Resenden keresztül (a `RESEND_API_KEY` és az `EMAIL_FROM` legyen beállítva).
-
-A webhook végpont: `https://<domain>/api/webhooks/neon-auth`. Ellenőrzi a Neon Ed25519 aláírását, a 5 percnél régebbi kéréseket elutasítja, és ismételt kézbesítésnél nem küld újra levelet.
-
-Bekapcsolás a Neon API-val (a `project_id`, `branch_id` és az API kulcs a Neon konzolban található):
-
-```bash
-curl -X PUT "https://console.neon.tech/api/v2/projects/<project_id>/branches/<branch_id>/auth/webhooks" \
-  -H "Authorization: Bearer $NEON_API_KEY" -H "Content-Type: application/json" \
-  -d '{"enabled": true, "webhook_url": "https://<domain>/api/webhooks/neon-auth", "enabled_events": ["send.otp", "send.magic_link"], "timeout_seconds": 5}'
-```
-
-Feliratkozás után a Neon **nem** küldi a saját levelét – ezért csak akkor kapcsold be, ha a Resend már működik.
-
 ### 3. Környezeti változók
 
 ```bash
@@ -77,8 +59,7 @@ cp .env.example .env.local
 | Változó | Leírás |
 | --- | --- |
 | `DATABASE_URL` | Neon pooled connection string (tulajdonos szerepkörrel, pl. `neondb_owner`) |
-| `NEON_AUTH_BASE_URL` | Neon konzol → Auth → Configuration |
-| `NEON_AUTH_COOKIE_SECRET` | min. 32 karakteres titok: `openssl rand -base64 32` |
+| `BETTER_AUTH_SECRET` | min. 32 karakteres titok: `openssl rand -base64 32` (nélküle a régi `NEON_AUTH_COOKIE_SECRET`-et használja) |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob store tokenje |
 | `RESEND_API_KEY` | Resend API kulcs a meghívó emailekhez (opcionális – nélküle a link kézzel másolható) |
 | `EMAIL_FROM` | feladó, pl. `Kibent <meghivo@kibent.hu>` (a domaint a Resendben hitelesíteni kell) |
@@ -112,7 +93,7 @@ npm test
 npm run build
 ```
 
-Helyi PostgreSQL-lel, a Neon Auth `neon_auth."user"` táblájának csonkjával:
+Helyi PostgreSQL-lel:
 
 - **RLS és üzleti szabályok** (46 ellenőrzés: tenant-izoláció, jóváhagyás, igazolások láthatósága, szerepkörök):
 
@@ -120,7 +101,7 @@ Helyi PostgreSQL-lel, a Neon Auth `neon_auth."user"` táblájának csonkjával:
 npm run test:db
 ```
 
-- **Integráció**: a valódi server actionök és az iCal route futnak egy friss adatbázison, csak a Neon Auth session és a Blob van helyettesítve.
+- **Integráció**: a valódi server actionök és az iCal route futnak egy friss adatbázison, csak a munkamenet és a Blob van helyettesítve.
 
 ```bash
 npm run test:integration
@@ -128,7 +109,8 @@ npm run test:integration
 
 ## Biztonsági modell röviden
 
-- A felhasználókat a **Neon Auth** kezeli (`neon_auth."user"`). Egy trigger minden új felhasználóhoz létrehozza a `profiles` sort.
+- A felhasználókat a saját **Better Auth** kezeli a `better_auth` sémában, amelyhez az alkalmazás korlátozott szerepköre nem fér hozzá. A `profiles` sor az első belépéskor jön létre; ha ugyanazzal az email címmel van régi (Neon Auth-os) profil, azt veszi át a céggel és a beosztással együtt.
+- Csak megerősített email címmel lehet belépni; a kódkérés és a belépés korlátozva van.
 - Minden felhasználói kérés **egy tranzakcióban** fut (`src/lib/db.ts → withUser`):
   `SET LOCAL ROLE kibent_app` és `set_config('app.user_id', …)`. Így minden lekérdezésre érvényesek az RLS szabályok (`app.uid()`), akkor is, ha egy server actionből hiányozna egy szűrés.
 - A `kibent_app` szerepkör nem írhatja közvetlenül a `profiles.role`, `company_id` és `ical_token` mezőket, és céget sem hozhat létre. Ezek csak `SECURITY DEFINER` RPC-ken keresztül módosulnak: `create_company`, `join_company`, `set_member_role`, `remove_member`.
@@ -142,7 +124,7 @@ npm run test:integration
 src/app/(auth)/        login, onboarding, auth server actionök
 src/app/(dashboard)/   naptár (/), kérelmek, beállítások + server actionök
 src/app/invite/[code]  meghívó landing
-src/app/api/auth/…     Neon Auth proxy
+src/app/api/auth/…     Better Auth végpontok
 src/app/api/ical/…     .ics feed
 src/proxy.ts           route-védelem (Next.js 16 proxy)
 src/components/        calendar/, requests/, settings/, layout/, ui/

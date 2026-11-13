@@ -28,19 +28,23 @@ function withoutSslParams(connectionString: string): string {
   }
 }
 
+/** Új kapcsolatkészlet a DATABASE_URL-hez (opcionálisan saját search_path-szal). */
+export function createPool(options: { searchPath?: string; max?: number } = {}): Pool {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) throw new Error("Hiányzó környezeti változó: DATABASE_URL. Lásd: .env.example");
+  const isLocal = /localhost|127\.0\.0\.1/.test(raw);
+  return new Pool({
+    connectionString: isLocal ? raw : withoutSslParams(raw),
+    max: options.max ?? 5,
+    idleTimeoutMillis: 10_000,
+    // Neon TLS-t követel meg: teljes tanúsítvány-ellenőrzés (verify-full). Helyi teszthez nem kell.
+    ssl: isLocal ? undefined : { rejectUnauthorized: true },
+    options: options.searchPath ? `-c search_path=${options.searchPath}` : undefined,
+  });
+}
+
 function getPool(): Pool {
-  if (!globalForPool.kibentPool) {
-    const raw = process.env.DATABASE_URL;
-    if (!raw) throw new Error("Hiányzó környezeti változó: DATABASE_URL. Lásd: .env.example");
-    const isLocal = /localhost|127\.0\.0\.1/.test(raw);
-    globalForPool.kibentPool = new Pool({
-      connectionString: isLocal ? raw : withoutSslParams(raw),
-      max: 5,
-      idleTimeoutMillis: 10_000,
-      // Neon TLS-t követel meg: teljes tanúsítvány-ellenőrzés (verify-full). Helyi teszthez nem kell.
-      ssl: isLocal ? undefined : { rejectUnauthorized: true },
-    });
-  }
+  globalForPool.kibentPool ??= createPool();
   return globalForPool.kibentPool;
 }
 

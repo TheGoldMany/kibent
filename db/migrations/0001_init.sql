@@ -74,7 +74,8 @@ create table public.companies (
 );
 
 create table public.profiles (
-  id          uuid primary key references neon_auth."user" (id) on delete cascade,
+  -- A felhasználói fiókra mutató hivatkozást a 0004 (Better Auth) állítja be.
+  id          uuid primary key,
   company_id  uuid references public.companies (id) on delete set null,
   email       text not null,
   full_name   text not null check (char_length(trim(full_name)) between 1 and 120),
@@ -201,7 +202,7 @@ begin
   create trigger on_auth_user_created
     after insert on neon_auth."user"
     for each row execute function public.handle_new_user();
-exception when insufficient_privilege or undefined_table then
+exception when insufficient_privilege or undefined_table or invalid_schema_name then
   raise warning 'on_auth_user_created trigger kihagyva (%): a profil az első belépéskor jön létre.', sqlerrm;
 end
 $do$;
@@ -227,7 +228,7 @@ begin
   create trigger on_auth_user_email_changed
     after update of email on neon_auth."user"
     for each row execute function public.handle_user_email_change();
-exception when insufficient_privilege or undefined_table then
+exception when insufficient_privilege or undefined_table or invalid_schema_name then
   raise warning 'on_auth_user_email_changed trigger kihagyva (%).', sqlerrm;
 end
 $do$;
@@ -241,7 +242,7 @@ begin
          u.image
     from neon_auth."user" u
   on conflict (id) do nothing;
-exception when insufficient_privilege then
+exception when insufficient_privilege or undefined_table or invalid_schema_name then
   raise warning 'Meglévő felhasználók átvétele kihagyva (%).', sqlerrm;
 end
 $do$;

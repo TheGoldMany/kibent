@@ -1,10 +1,10 @@
-import { getAuth } from "@/lib/auth/server";
+import { authHandler } from "@/lib/auth/server";
 
-// A Neon Auth kéréseinek proxyja (/api/auth/*).
-export async function GET(request: Request, ctx: { params: Promise<{ path: string[] }> }) {
-  return getAuth().handler().GET(request, ctx);
+// A Better Auth végpontjai (/api/auth/*).
+export async function GET(request: Request) {
+  return authHandler().GET(request);
 }
 
-export async function POST(request: Request, ctx: { params: Promise<{ path: string[] }> }) {
-  return getAuth().handler().POST(request, ctx);
+export async function POST(request: Request) {
+  return authHandler().POST(request);
 }
