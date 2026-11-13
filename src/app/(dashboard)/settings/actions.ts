@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin, requireMember, withMember } from "@/lib/auth";
 import { getAuth } from "@/lib/auth/server";
-import { dbErrorMessage } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { deletePrivate } from "@/lib/blob";
+import { dbErrorMessage, withSystem } from "@/lib/db";
 import { isEmailConfigured, sendInvitationEmail } from "@/lib/email";
 import { hasV2Schema, SCHEMA_PENDING_MESSAGE } from "@/lib/schema";
 import { siteUrl } from "@/lib/utils";
@@ -64,7 +66,7 @@ export async function updateCompanyNameAction(_prev: FormState, formData: FormDa
   if (!res.ok) return { error: res.error };
 
   revalidatePath("/", "layout");
-  return { success: "Cégnév elmentve." };
+  return { success: "Csapatnév elmentve." };
 }
 
 export async function setMemberRoleAction(userId: string, role: Role): Promise<Result> {
@@ -85,6 +87,32 @@ export async function removeMemberAction(userId: string): Promise<Result> {
   const res = await run(ctx, "select public.remove_member($1)", [parsed.data]);
   if (res.ok) revalidatePath("/", "layout");
   return res;
+}
+
+/** Kilépés az aktív csapatból. Az utolsó tag kilépésével a csapat (és minden adata) törlődik. */
+export async function leaveTeamAction(): Promise<Result> {
+  const ctx = await requireMember();
+  let deleted = false;
+  let paths: string[] = [];
+  try {
+    // Ha a csapat megszűnik, az igazolások fájljait is töröljük (a sorok a csapattal együtt törlődnek).
+    const docs = await withSystem((db) =>
+      db.query<{ storage_path: string }>(
+        `select d.storage_path from medical_documents d
+          where d.company_id = $1
+            and not exists (select 1 from memberships m where m.company_id = $1 and m.user_id <> $2)`,
+        [ctx.company.id, ctx.userId],
+      ),
+    );
+    paths = docs.map((d) => d.storage_path);
+    const row = await withMember(ctx, (tx) => tx.one<{ deleted: boolean }>("select public.leave_team() as deleted"));
+    deleted = !!row?.deleted;
+  } catch (error) {
+    return { ok: false, error: dbErrorMessage(error) };
+  }
+  if (deleted && paths.length > 0) await deletePrivate(paths).catch((e) => console.error("[blob] delete", e));
+  revalidatePath("/", "layout");
+  redirect("/");
 }
 
 // --- Munkaidő és ebédszünet ----------------------------------------------------

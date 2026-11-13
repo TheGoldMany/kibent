@@ -16,7 +16,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const pendingCount = isAdmin ? ctx.pendingCount : 0;
 
   return (
-    <div className="flex min-h-screen flex-col bg-cotton">
+    <div className={`flex min-h-screen flex-col bg-cotton ${hasTeam ? "pb-[4.25rem] sm:pb-0" : ""}`}>
       <header className="sticky top-0 z-40 border-b-2 border-ink bg-white">
         <div className="mx-auto flex h-[4.5rem] max-w-[1600px] items-center gap-2 px-3 sm:gap-4 sm:px-6 lg:px-10">
           <Logo compact />

@@ -100,7 +100,7 @@ function LeaveRequestForm({
           <Label>Orvosi igazolás (opcionális, később is feltölthető)</Label>
           <FileDropzone />
           <p className="flex items-center gap-1.5 text-xs">
-            <Lock className="h-3 w-3" /> Az igazolást kizárólag te és a céged adminisztrátorai láthatják.
+            <Lock className="h-3 w-3" /> Az igazolást kizárólag te és a csapat adminisztrátorai láthatják.
           </p>
         </div>
       )}

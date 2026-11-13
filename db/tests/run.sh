@@ -12,3 +12,4 @@ done
 "${PSQL[@]}" -d "$DB" -f "$DIR/rls_test.sql"
 # A 0005 újrafuttatható (a bootstrap ezt feltételezi)
 "${PSQL[@]}" -d "$DB" -f "$DIR/../migrations/0005_teams.sql"
+"${PSQL[@]}" -d "$DB" -f "$DIR/../migrations/0006_leave_team.sql"

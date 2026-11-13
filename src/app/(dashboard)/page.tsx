@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { PartyPopper } from "lucide-react";
+import { GettingStarted } from "@/components/calendar/GettingStarted";
 import { CalendarToolbar } from "@/components/calendar/CalendarToolbar";
 import { StatusLegend } from "@/components/calendar/StatusLegend";
 import { TeamMatrix } from "@/components/calendar/TeamMatrix";
@@ -18,7 +18,7 @@ export const metadata: Metadata = { title: "Csapatnaptár" };
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; date?: string; welcome?: string; new?: string }>;
+  searchParams: Promise<{ view?: string; date?: string }>;
 }) {
   const params = await searchParams;
   const session = await requireSession();
@@ -75,19 +75,6 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-6">
-      {params.new && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-ink bg-butter px-4 py-3 text-sm font-medium shadow-brutal-xs">
-          <PartyPopper className="h-4 w-4" />
-          Kész a(z) {ctx.company.name} csapat! Hívd meg a kollégáidat a „Kollégák meghívása” gombbal.
-        </div>
-      )}
-      {params.welcome && (
-        <div className="flex items-center gap-2 rounded-xl border-2 border-ink bg-emerald-100 px-4 py-3 text-sm font-medium shadow-brutal-xs">
-          <PartyPopper className="h-4 w-4" />
-          Üdv a(z) {ctx.company.name} csapatában! Állítsd be a heti rutinodat, hogy a kollégák lássák, mikor vagy bent.
-        </div>
-      )}
-
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-5xl font-bold leading-none sm:text-6xl">Csapatnaptár</h1>
@@ -99,10 +86,13 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {!myPattern && (
-        <p className="rounded-xl border-2 border-dashed border-ink bg-butter/50 px-4 py-3 text-sm">
-          Még nincs heti rutinod. Állítsd be egyszer a Heti rutin gombbal, és a naptár minden hétre kitöltődik.
-        </p>
+      {(!myPattern || (isAdmin && members.length === 1)) && (
+        <GettingStarted
+          teamName={ctx.company.name}
+          hasPattern={!!myPattern}
+          showInvite={isAdmin}
+          hasColleagues={members.length > 1}
+        />
       )}
 
       <CalendarToolbar view={view} anchor={anchor} start={start} end={end} isCurrent={today >= start && today <= end} />

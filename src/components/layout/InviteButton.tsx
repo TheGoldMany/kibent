@@ -7,14 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 /** Fejléc gomb: kollégák meghívása email címmel. */
-export function InviteButton() {
+export function InviteButton({ showLabel = false }: { showLabel?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" aria-label="Kollégák meghívása">
           <UserPlus />
-          <span className="hidden md:inline">Kollégák meghívása</span>
+          <span className={showLabel ? undefined : "hidden lg:inline"}>{showLabel ? "Meghívás" : "Kollégák meghívása"}</span>
         </Button>
       </DialogTrigger>
       <DialogContent>

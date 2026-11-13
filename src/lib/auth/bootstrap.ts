@@ -1,6 +1,7 @@
 import "server-only";
 import { withSystem } from "@/lib/db";
 import { AUTH_SCHEMA_SQL, AUTH_SCHEMA_VERSION } from "@/lib/auth/schema-sql";
+import { LEAVE_SCHEMA_SQL, LEAVE_SCHEMA_VERSION } from "@/lib/auth/leave-sql";
 import { TEAMS_SCHEMA_SQL, TEAMS_SCHEMA_VERSION } from "@/lib/auth/teams-sql";
 
 /**
@@ -17,6 +18,11 @@ const STEPS = [
     version: TEAMS_SCHEMA_VERSION,
     check: "select obj_description(to_regclass('public.memberships'), 'pg_class') as v",
     sql: TEAMS_SCHEMA_SQL,
+  },
+  {
+    version: LEAVE_SCHEMA_VERSION,
+    check: "select obj_description(to_regprocedure('public.leave_team()'), 'pg_proc') as v",
+    sql: LEAVE_SCHEMA_SQL,
   },
 ];
 

@@ -352,6 +352,25 @@ select pg_temp.expect_eq((select (public.rate_limit_hit('teszt', 2, 60))::int)::
 select pg_temp.expect_eq((select (public.rate_limit_hit('teszt', 2, 60))::int)::bigint, 1, 'korlátozó: 2. kérés átmegy');
 select pg_temp.expect_eq((select (public.rate_limit_hit('teszt', 2, 60))::int)::bigint, 0, 'korlátozó: 3. kérés tiltva');
 
+-- ---------------------------------------------------------------- 0006: kilépés a csapatból
+set role kibent_app;
+-- Acme: D admin, A member (lefokozva), B eltávolítva. Labs: csak A (admin). Other: csak C.
+set app.user_id = '00000000-0000-0000-0000-00000000000d';
+select set_config('app.company_id', (select acme_id::text from t_ctx), false);
+select pg_temp.expect_fail($$select public.leave_team()$$, 'egyetlen admin nem léphet ki, amíg van más tag');
+set app.company_id = '';
+select pg_temp.expect_fail($$select public.leave_team()$$, 'aktív csapat nélkül nincs miből kilépni');
+set app.user_id = '00000000-0000-0000-0000-00000000000a';
+select set_config('app.company_id', (select acme_id::text from t_ctx), false);
+select pg_temp.expect_eq((select public.leave_team()::int)::bigint, 0, 'tag kilép, a csapat megmarad');
+select pg_temp.expect_eq((select count(*) from public.schedules), 0, 'kilépés után nem lát csapatadatot');
+select set_config('app.company_id', (select labs_id::text from t_ctx), false);
+select pg_temp.expect_eq((select public.leave_team()::int)::bigint, 1, 'utolsó tag kilép: a csapat törlődik');
+reset role;
+select pg_temp.expect_eq((select count(*) from public.companies where name = 'Acme Labs'), 0, 'a csapat megszűnt');
+select pg_temp.expect_eq((select count(*) from public.schedules where company_id = (select labs_id from t_ctx)), 0, 'a törölt csapat adatai is törlődtek');
+select pg_temp.expect_eq((select count(*) from public.schedules where user_id = '00000000-0000-0000-0000-00000000000a'), 0, 'a kilépő beosztása törlődött');
+
 -- ---------------------------------------------------------------- Profil: nincs email alapú átvétel
 insert into better_auth."user" (id, email, name, "emailVerified")
   values ('00000000-0000-0000-0000-0000000000ef', 'anna@acme.hu.uj', 'Új Fiók', false);

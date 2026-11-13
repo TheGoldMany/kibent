@@ -30,12 +30,11 @@ export function InviteForm() {
             name="emails"
             required
             rows={3}
-            placeholder={"anna@ceged.hu\nbela@ceged.hu"}
+            placeholder={"anna@pelda.hu\nbela@pelda.hu"}
             autoComplete="off"
           />
           <p className="text-sm text-muted-foreground">
-            Több címet vesszővel vagy új sorral válassz el. Mindenki személyes linket kap, és csak a saját email
-            címével tud csatlakozni.
+            Több címet vesszővel vagy új sorral válassz el. Mindenki saját meghívó linket kap emailben.
           </p>
         </div>
         <FormMessage state={state?.error ? { error: state.error } : state?.success ? { success: state.success } : null} />

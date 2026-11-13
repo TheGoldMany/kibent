@@ -3,10 +3,10 @@
 import { useActionState, useState, useTransition } from "react";
 import { MailCheck } from "lucide-react";
 import {
+  requestPasswordResetAction,
   resendCodeAction,
-  sendSignInCodeAction,
+  resetPasswordAction,
   signInAction,
-  signInWithCodeAction,
   signUpAction,
   type AuthState,
 } from "@/app/(auth)/actions";
@@ -19,10 +19,9 @@ import { cn } from "@/lib/utils";
 export type LoginMode = "password" | "signup" | "code";
 type Mode = LoginMode;
 
-const TABS: { id: Mode; label: string; short?: string }[] = [
-  { id: "password", label: "Jelszóval" },
+const TABS: { id: Mode; label: string }[] = [
+  { id: "password", label: "Belépés" },
   { id: "signup", label: "Regisztráció" },
-  { id: "code", label: "Emailes kód", short: "Kóddal" },
 ];
 
 export function LoginForms({
@@ -40,33 +39,28 @@ export function LoginForms({
   const [mode, setMode] = useState<Mode>(defaultMode);
   const [signInState, signIn] = useActionState(signInAction, initialError ? { error: initialError } : null);
   const [signUpState, signUp] = useActionState(signUpAction, null);
-  const [sendCodeState, sendCode] = useActionState(sendSignInCodeAction, null);
+  const [sendCodeState, sendCode] = useActionState(requestPasswordResetAction, null);
   return (
     <div className="space-y-6">
-      <div role="tablist" aria-label="Belépési mód" className="grid grid-cols-3 gap-1 rounded-full border-2 border-ink bg-lilac-soft p-1 text-[13px]">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            type="button"
-            aria-selected={mode === t.id}
-            onClick={() => setMode(t.id)}
-            className={cn(
-              "rounded-full px-2 py-2 font-semibold font-wide transition-colors",
-              mode === t.id ? "border-2 border-ink bg-butter shadow-brutal-xs" : "border-2 border-transparent hover:bg-white",
-            )}
-          >
-            {t.short ? (
-              <>
-                <span className="sm:hidden">{t.short}</span>
-                <span className="hidden sm:inline">{t.label}</span>
-              </>
-            ) : (
-              t.label
-            )}
-          </button>
-        ))}
-      </div>
+      {mode !== "code" && (
+        <div role="tablist" aria-label="Belépés vagy regisztráció" className="grid grid-cols-2 gap-1 rounded-full border-2 border-ink bg-lilac-soft p-1 text-sm">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              type="button"
+              aria-selected={mode === t.id}
+              onClick={() => setMode(t.id)}
+              className={cn(
+                "rounded-full px-2 py-2 font-semibold font-wide transition-colors",
+                mode === t.id ? "border-2 border-ink bg-butter shadow-brutal-xs" : "border-2 border-transparent hover:bg-white",
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {mode === "password" && (
         <form action={signIn} className="space-y-4">
@@ -83,6 +77,11 @@ export function LoginForms({
           <SubmitButton size="lg" className="w-full" pendingText="Belépés…">
             Belépés
           </SubmitButton>
+          <p className="text-center text-sm">
+            <button type="button" onClick={() => setMode("code")} className="font-semibold underline decoration-2 underline-offset-4">
+              Elfelejtetted a jelszavad?
+            </button>
+          </p>
         </form>
       )}
 
@@ -108,6 +107,7 @@ export function LoginForms({
           <SubmitButton size="lg" className="w-full" pendingText="Fiók létrehozása…">
             Fiók létrehozása
           </SubmitButton>
+          <p className="text-center text-sm text-muted-foreground">Ingyenes. Nem kell megerősítő email, azonnal belépsz.</p>
         </form>
       )}
 
@@ -116,6 +116,10 @@ export function LoginForms({
           <SignInCodeStep email={sendCodeState.codeSentTo} next={next} onBack={() => setMode("password")} />
         ) : (
           <form action={sendCode} className="space-y-4">
+            <div>
+              <h3 className="font-display text-2xl font-bold leading-tight">Új jelszó kérése</h3>
+              <p className="mt-1 text-[15px]">Küldünk egy kódot az email címedre, azzal új jelszót állíthatsz be.</p>
+            </div>
             <Field
               id="email"
               label="Email cím"
@@ -123,31 +127,31 @@ export function LoginForms({
               autoComplete="email"
               defaultValue={sendCodeState?.values?.email ?? defaultEmail}
             />
-            <p className="text-sm text-muted-foreground">
-              Jelszó nélkül: küldünk egy egyszer használatos kódot a már regisztrált email címedre. Ha még nincs
-              fiókod, előbb válaszd a Regisztrációt.
-            </p>
             <FormMessage state={sendCodeState} />
             <SubmitButton size="lg" className="w-full" pendingText="Küldés…">
               Kód küldése
             </SubmitButton>
+            <p className="text-center text-sm">
+              <button type="button" onClick={() => setMode("password")} className="underline decoration-2 underline-offset-4">
+                Vissza a belépéshez
+              </button>
+            </p>
           </form>
         ))}
     </div>
   );
 }
 
-/** Jelszó nélküli belépés 2. lépése: a kapott kód beváltása. */
+/** Elfelejtett jelszó 2. lépése: kód + új jelszó. */
 function SignInCodeStep({ email, next, onBack }: { email: string; next: string; onBack: () => void }) {
-  const [state, action] = useActionState(signInWithCodeAction, null);
+  const [state, action] = useActionState(resetPasswordAction, null);
   return (
     <CodeForm
-      title="Írd be a belépő kódot"
+      title="Írd be a kódot és az új jelszavad"
       email={email}
-      purpose="sign-in"
       action={action}
       state={state}
-      submitLabel="Belépés"
+      submitLabel="Jelszó mentése és belépés"
       next={next}
       onBack={onBack}
     />
@@ -157,7 +161,6 @@ function SignInCodeStep({ email, next, onBack }: { email: string; next: string; 
 function CodeForm({
   title,
   email,
-  purpose,
   action,
   state,
   submitLabel,
@@ -166,7 +169,6 @@ function CodeForm({
 }: {
   title: string;
   email: string;
-  purpose: "sign-in";
   action: (formData: FormData) => void;
   state: AuthState;
   submitLabel: string;
@@ -207,6 +209,10 @@ function CodeForm({
           className="h-14 text-center font-wide text-2xl font-semibold tracking-[0.4em] placeholder:tracking-[0.4em]"
         />
       </div>
+      <div className="space-y-2">
+        <Label htmlFor="new-password">Új jelszó (min. 8 karakter)</Label>
+        <Input id="new-password" name="password" type="password" required minLength={8} autoComplete="new-password" />
+      </div>
 
       <FormMessage state={state} />
       <FormMessage state={resendMessage} />
@@ -221,7 +227,7 @@ function CodeForm({
           disabled={resendPending}
           onClick={() =>
             startResend(async () => {
-              const res = await resendCodeAction(email, purpose);
+              const res = await resendCodeAction(email);
               setResendMessage(res.ok ? { success: res.message } : { error: res.message });
             })
           }

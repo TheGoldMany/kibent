@@ -1,8 +1,9 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { MoreHorizontal, RefreshCw, ShieldCheck, UserMinus, UserCog } from "lucide-react";
+import { LogOut, MoreHorizontal, RefreshCw, ShieldCheck, UserMinus, UserCog } from "lucide-react";
 import {
+  leaveTeamAction,
   regenerateIcalTokenAction,
   removeMemberAction,
   setMemberRoleAction,
@@ -114,7 +115,7 @@ export function CompanyForm({
     <div className="space-y-6">
       <form action={action} className="space-y-3">
         <div className="space-y-2">
-          <Label htmlFor="companyName">Cég neve</Label>
+          <Label htmlFor="companyName">Csapat neve</Label>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input id="companyName" name="name" defaultValue={name} required minLength={2} maxLength={120} />
             <SubmitButton className="shrink-0" pendingText="Mentés…">
@@ -157,9 +158,12 @@ export function CompanyForm({
 export function MemberList({
   members,
   currentUserId,
+  canManage,
 }: {
   members: { id: string; full_name: string; email: string; role: Role }[];
   currentUserId: string;
+  /** Csak admin kezelheti a tagokat; tagnak ez egy egyszerű névsor. */
+  canManage: boolean;
 }) {
   const { pending, error, run } = useConfirmAction();
   return (
@@ -183,6 +187,7 @@ export function MemberList({
                 {m.role === "admin" && <ShieldCheck className="h-3.5 w-3.5" />}
                 {m.role === "admin" ? "Admin" : "Tag"}
               </span>
+              {canManage && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-8 w-8" disabled={pending} aria-label={`${m.full_name} kezelése`}>
@@ -207,20 +212,44 @@ export function MemberList({
                       className="text-rose-700 focus:text-rose-800"
                       onSelect={() =>
                         run(
-                          `${m.full_name} eltávolítása a cégből: a beosztása és heti rutinja törlődik. Folytatod?`,
+                          `${m.full_name} eltávolítása a csapatból: a beosztása és heti rutinja törlődik. Folytatod?`,
                           () => removeMemberAction(m.id),
                         )
                       }
                     >
-                      <UserMinus /> Eltávolítás a cégből
+                      <UserMinus /> Eltávolítás a csapatból
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
+              )}
             </li>
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+export function LeaveTeamButton({ teamName, deletesTeam }: { teamName: string; deletesTeam: boolean }) {
+  const { pending, error, run } = useConfirmAction();
+  return (
+    <div className="space-y-3">
+      <Button
+        variant="outline"
+        disabled={pending}
+        onClick={() =>
+          run(
+            deletesTeam
+              ? `A(z) ${teamName} csapat és minden adata végleg törlődik. Biztosan folytatod?`
+              : `Biztosan kilépsz a(z) ${teamName} csapatból?`,
+            leaveTeamAction,
+          )
+        }
+      >
+        <LogOut /> {deletesTeam ? "Csapat törlése" : "Kilépés a csapatból"}
+      </Button>
+      {error && <p className="rounded-xl border-2 border-ink bg-bubblegum px-3.5 py-2.5 text-sm font-medium">{error}</p>}
     </div>
   );
 }

@@ -105,7 +105,7 @@ export function WorkHoursForm({ initial, lunchMinutes }: { initial: WorkHours[];
       </div>
 
       <p className="rounded-xl border-2 border-dashed border-ink bg-butter/40 px-4 py-3 text-sm">
-        Az ebédszünet hossza a cégnél <span className="font-semibold">{lunchMinutes} perc</span>. Ezt az
+        Az ebédszünet hossza a csapatban <span className="font-semibold">{lunchMinutes} perc</span>. Ezt az
         adminisztrátor állítja be, te azt választod meg, mikor kezded.
       </p>
 

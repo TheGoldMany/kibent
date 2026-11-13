@@ -128,7 +128,7 @@ run("integráció (helyi Postgres)", () => {
 
     as(ANNA);
     expect((await getSessionContext())?.company).toBeNull(); // üres felület
-    await expectRedirect(createCompanyAction(null, fd({ name: "Acme Kft." })), "/?new=1");
+    await expectRedirect(createCompanyAction(null, fd({ name: "Acme Kft." })), "/");
     expect((await getSessionContext())?.company?.name).toBe("Acme Kft.");
     expect((await getSessionContext())?.profile.role).toBe("admin");
 
@@ -166,22 +166,22 @@ run("integráció (helyi Postgres)", () => {
 
     // Belépett meghívott: elfogad -> a csapatban van
     as(BELA);
-    await expectRedirect(acceptInvitationAction(null, fd({ token: belaToken })), "/?welcome=1");
+    await expectRedirect(acceptInvitationAction(null, fd({ token: belaToken })), "/");
     expect((await getSessionContext())?.company?.name).toBe("Acme Kft.");
     expect((await getSessionContext())?.profile.role).toBe("member");
     // Felhasznált meghívó újra: már tag -> nem hiba
-    await expectRedirect(acceptInvitationAction(null, fd({ token: belaToken })), "/?welcome=1");
+    await expectRedirect(acceptInvitationAction(null, fd({ token: belaToken })), "/");
 
     // Belépés a meghívó linkről: rögtön csatlakozik
     as(DANI);
     await expectRedirect(
       signInAction(null, fd({ email: "dani@acme.hu", password: "titkos-jelszo", next: `/invite/${daniToken}` })),
-      "/?welcome=1",
+      "/",
     );
     expect((await getSessionContext())?.company?.name).toBe("Acme Kft.");
 
     // Több csapat: Dani létrehoz egy sajátot, arra vált, majd vissza
-    await expectRedirect(createCompanyAction(null, fd({ name: "Dani csapata" })), "/?new=1");
+    await expectRedirect(createCompanyAction(null, fd({ name: "Dani csapata" })), "/");
     expect((await getSessionContext())?.company?.name).toBe("Dani csapata");
     expect((await getSessionContext())?.teams.map((t) => [t.name, t.role])).toEqual([
       ["Acme Kft.", "member"],
@@ -346,7 +346,7 @@ run("integráció (helyi Postgres)", () => {
     );
     as(ANNA);
     expect(await setMemberRoleAction(ANNA, "member")).toMatchObject({ ok: false, error: expect.stringContaining("legalább egy") });
-    expect(await updateCompanyNameAction(null, fd({ name: "Acme Zrt." }))).toEqual({ success: "Cégnév elmentve." });
+    expect(await updateCompanyNameAction(null, fd({ name: "Acme Zrt." }))).toEqual({ success: "Csapatnév elmentve." });
     expect(await setMemberRoleAction(DANI, "admin")).toEqual({ ok: true });
     as(BELA);
     await expectRedirect(removeMemberAction(DANI), "/");
@@ -391,5 +391,28 @@ run("integráció (helyi Postgres)", () => {
 
     expect((await call("00000000-0000-0000-0000-000000000000")).status).toBe(404);
     expect((await call("nem-uuid")).status).toBe(404);
+  });
+
+  it("kilépés a csapatból: egyetlen admin nem léphet ki, az utolsó taggal a csapat törlődik", async () => {
+    const { leaveTeamAction } = await import("@/app/(dashboard)/settings/actions");
+    const { createCompanyAction } = await import("@/app/(auth)/actions");
+    const { getSessionContext } = await import("@/lib/auth");
+    // Erik: saját csapat, egyedül -> kilépéskor törlődik
+    as("00000000-0000-0000-0000-0000000000e1");
+    await expectRedirect(createCompanyAction(null, fd({ name: "Egyszemélyes" })), "/");
+    await expectRedirect(leaveTeamAction(), "/");
+    expect((await pool.query("select 1 from companies where name = 'Egyszemélyes'")).rowCount).toBe(0);
+    expect((await getSessionContext())?.company).toBeNull();
+    // Acme: Dani és Anna admin (Béla eltávolítva). Anna kiléphet, utána Dani az egyetlen admin.
+    as(ANNA);
+    await expectRedirect(leaveTeamAction(), "/");
+    // Új tag mellett az egyetlen admin (Dani) nem léphet ki
+    const acme = (await pool.query("select id from companies where name like 'Acme%'")).rows[0].id;
+    await pool.query("insert into memberships (user_id, company_id, role) values ($1, $2, 'member')", [BELA, acme]);
+    as(DANI);
+    jar().set("kibent_team", acme);
+    expect(await leaveTeamAction()).toMatchObject({ ok: false, error: expect.stringContaining("egyetlen adminisztrátor") });
+    expect((await pool.query("select count(*)::int as n from memberships where user_id = $1", [ANNA])).rows[0].n).toBe(0);
+    expect((await pool.query("select 1 from companies where name like 'Acme%'")).rowCount).toBe(1);
   });
 });

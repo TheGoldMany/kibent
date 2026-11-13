@@ -60,13 +60,13 @@ async function afterAuth(next: string, data: unknown): Promise<string> {
     return next;
   }
   const result = await acceptInvitation(userId, token);
-  return "error" in result ? next : "/?welcome=1";
+  return "error" in result ? next : "/";
 }
 
 /** Az auth űrlapok állapota: hibák/üzenetek + a kódos lépéshez szükséges email cím. */
 export type AuthState =
   | (FormState & {
-      /** Erre a címre ment ki belépő kód (jelszó nélküli belépés). */
+      /** Erre a címre ment ki a jelszó-visszaállító kód. */
       codeSentTo?: string;
       /** Hiba esetén a beírt értékek (a React 19 action után üríti az űrlapot). Jelszót soha. */
       values?: { email?: string; fullName?: string };
@@ -116,40 +116,48 @@ export async function signUpAction(_prev: AuthState, formData: FormData): Promis
   redirect(await afterAuth(next, data));
 }
 
-/** Új belépő kód kérése (jelszó nélküli belépés). */
-export async function resendCodeAction(
-  email: string,
-  purpose: "sign-in",
-): Promise<{ ok: boolean; message: string }> {
+const EMAIL_FAILED = "Most nem tudunk emailt küldeni. Próbáld újra pár perc múlva.";
+
+async function sendResetCode(email: string): Promise<string | null> {
+  if (!(await allowCodeEmail(email))) return RATE_LIMIT_MESSAGE;
+  const { error } = await getAuth().emailOtp.requestPasswordReset({ email });
+  if (!error) return null;
+  return /email_not_sent/.test(error.message) ? EMAIL_FAILED : authErrorHu(error.message);
+}
+
+/** Új kód kérése a jelszó-visszaállításhoz. */
+export async function resendCodeAction(email: string): Promise<{ ok: boolean; message: string }> {
   const parsed = magicLinkSchema.safeParse({ email });
   if (!parsed.success) return { ok: false, message: firstError(parsed.error) };
-  if (!(await allowCodeEmail(parsed.data.email))) return { ok: false, message: RATE_LIMIT_MESSAGE };
-  const { error } = await getAuth().emailOtp.sendVerificationOtp({ email: parsed.data.email, type: purpose });
-  if (error) return { ok: false, message: authErrorHu(error.message) };
+  const failed = await sendResetCode(parsed.data.email);
+  if (failed) return { ok: false, message: failed };
   return { ok: true, message: "Új kódot küldtünk. Nézd meg a postafiókod (a spam mappát is)." };
 }
 
-/** Jelszó nélküli belépés, 1. lépés: kód küldése a regisztrált email címre. */
-export async function sendSignInCodeAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
+/** Elfelejtett jelszó, 1. lépés: kód küldése a regisztrált email címre. */
+export async function requestPasswordResetAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
   const values = { email: String(formData.get("email") ?? "") };
   const parsed = magicLinkSchema.safeParse({ email: formData.get("email") });
   if (!parsed.success) return { error: firstError(parsed.error), values };
-  if (!(await allowCodeEmail(parsed.data.email))) return { error: RATE_LIMIT_MESSAGE, values };
-
-  const { error } = await getAuth().emailOtp.sendVerificationOtp({ email: parsed.data.email, type: "sign-in" });
-  if (error) return { error: authErrorHu(error.message), values };
+  const failed = await sendResetCode(parsed.data.email);
+  if (failed) return { error: failed, values };
   return { codeSentTo: parsed.data.email };
 }
 
-/** Jelszó nélküli belépés, 2. lépés: a kód beváltása. */
-export async function signInWithCodeAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
+/** Elfelejtett jelszó, 2. lépés: kód + új jelszó, utána rögtön belép. */
+export async function resetPasswordAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
   const email = String(formData.get("email") ?? "");
   const parsed = otpSchema.safeParse({ email, otp: formData.get("otp") });
   if (!parsed.success) return { error: firstError(parsed.error), codeSentTo: email };
+  const password = String(formData.get("password") ?? "");
+  if (password.length < 8) return { error: "A jelszó legalább 8 karakter legyen.", codeSentTo: email };
+  if (password.length > 128) return { error: "A jelszó túl hosszú.", codeSentTo: email };
 
-  const { data, error } = await getAuth().signIn.emailOtp(parsed.data);
+  const reset = await getAuth().emailOtp.resetPassword({ ...parsed.data, password });
+  if (reset.error) return { error: authErrorHu(reset.error.message), codeSentTo: email };
+
+  const { data, error } = await getAuth().signIn.email({ email: parsed.data.email, password });
   if (error) return { error: authErrorHu(error.message), codeSentTo: email };
-
   redirect(await afterAuth(safeNext(formData.get("next")), data));
 }
 
@@ -178,7 +186,7 @@ export async function createCompanyAction(_prev: FormState, formData: FormData):
 
   await setActiveTeamCookie(companyId);
   revalidatePath("/", "layout");
-  redirect("/?new=1");
+  redirect("/");
 }
 
 /** Csapatváltás: a süti csak akkor számít, ha a felhasználó tényleg tagja (getSessionContext ellenőrzi). */
@@ -199,5 +207,5 @@ export async function acceptInvitationAction(_prev: FormState, formData: FormDat
   if (!ctx) redirect(`/login?next=${encodeURIComponent(`/invite/${parsed.data}`)}`);
   const result = await acceptInvitation(ctx.userId, parsed.data);
   if ("error" in result) return { error: result.error };
-  redirect("/?welcome=1");
+  redirect("/");
 }

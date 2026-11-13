@@ -83,7 +83,12 @@ function createAuth() {
           const result = await sendEmail({ to: email, ...content });
           if (!result.sent) {
             console.error(`[auth] a kódos email nem ment ki (${result.reason})`);
-            if (process.env.NODE_ENV !== "production") console.info(`[auth] fejlesztői kód ${email}: ${otp}`);
+            if (process.env.NODE_ENV !== "production" || process.env.AUTH_LOG_CODES === "1") {
+              console.info(`[auth] fejlesztői kód ${email}: ${otp}`);
+              return;
+            }
+            // Élesben ne várjon a felhasználó egy levélre, ami sosem érkezik meg.
+            throw new Error("email_not_sent");
           }
         },
       }),
@@ -145,6 +150,12 @@ const api = {
   emailOtp: {
     async sendVerificationOtp(body: { email: string; type: "sign-in" | "email-verification" | "forget-password" }) {
       return call(() => auth().api.sendVerificationOTP({ body }));
+    },
+    async requestPasswordReset(body: { email: string }) {
+      return call(() => auth().api.requestPasswordResetEmailOTP({ body }));
+    },
+    async resetPassword(body: { email: string; otp: string; password: string }) {
+      return call(() => auth().api.resetPasswordEmailOTP({ body }));
     },
     async verifyEmail(body: { email: string; otp: string }) {
       const h = await headers();

@@ -11,8 +11,8 @@ Ingyenes, multi-tenant csapatnaptár KKV-knak és startupoknak: ki van bent az i
 - **Ismétlődő heti rutin:** alapértelmezett H–P beosztás, amelyet a napi bejegyzések felülírnak.
 - **Szabadság:** időszak kiválasztása (a hétvégéket kihagyja), adminisztrátori jóváhagyás egy kattintással, „Függőben” jelzés a naptárban.
 - **Betegszabadság:** nincs jóváhagyás; az orvosi igazolás (PDF/JPG/PNG, max. 10 MB) privát Vercel Blob tárolóba kerül, és **csak a feltöltő meg az adminok** láthatják, 60 másodpercig érvényes aláírt URL-lel.
-- **Egyszerű regisztráció:** bárki regisztrálhat név + email + jelszó megadásával, és azonnal belép (nincs megerősítő levél). Jelszó nélkül emailes kóddal is be lehet lépni. Saját Better Auth, a felhasználók a Neon adatbázis `better_auth` sémájában.
-- **Több csapat:** belépés után egy üres felület fogad, ahol egy vagy több csapatot hozhatsz létre (te leszel az admin). A fejlécben lévő csapatváltóval válthatsz köztük; minden csapatnak saját naptára, rutinja és munkaideje van.
+- **Egyszerű regisztráció:** bárki regisztrálhat név + email + jelszó megadásával, és azonnal belép (nincs megerősítő levél). Elfelejtett jelszó esetén emailes kóddal állítható be új. Saját Better Auth, a felhasználók a Neon adatbázis `better_auth` sémájában.
+- **Több csapat:** belépés után egy üres felület fogad, ahol egy vagy több csapatot hozhatsz létre (te leszel az admin). A fejlécben lévő csapatváltóval válthatsz köztük; minden csapatnak saját naptára, rutinja és munkaideje van. Bármelyik csapatból ki lehet lépni (az utolsó tag kilépésével a csapat törlődik).
 - **Meghívás email címre:** az admin beírja a kollégák címét, mindenki személyes linket kap emailben. Akinek van fiókja, csak elfogadja; akinek nincs, a linkről regisztrál, és rögtön a csapatban van. Szerepkörök kezelése, tagok eltávolítása.
 - **Munkaidő és ebédszünet:** mindenki maga állítja be napi bontásban; az ebédszünet hosszát az admin adja meg. A naptárban látszik, ki ebédel éppen.
 - **Élő iCal feed:** `/api/ical/{token}/calendar.ics?c={csapat}` (opcionálisan `&team=1`), Google, Apple és Outlook naptárral is működik.
@@ -22,7 +22,7 @@ Ingyenes, multi-tenant csapatnaptár KKV-knak és startupoknak: ki van bent az i
 ### 1. Neon (`kibent-oltp`)
 
 1. A [Neon konzolban](https://console.neon.tech) nyisd meg a **kibent-oltp** projektet.
-2. A bejelentkezést az alkalmazás maga kezeli (Better Auth); a Neon Auth-ot nem kell bekapcsolni. A `better_auth` sémát (0004) és a több-csapatos tagságokat (0005) az alkalmazás az első induláskor automatikusan létrehozza.
+2. A bejelentkezést az alkalmazás maga kezeli (Better Auth); a Neon Auth-ot nem kell bekapcsolni. A `better_auth` sémát (0004) a több-csapatos tagságokat (0005) és a kilépést (0006) az alkalmazás az első induláskor automatikusan létrehozza.
 3. Másold ki a **pooled** connection stringet (`DATABASE_URL`).
 4. Futtasd a migrációkat sorrendben (`0001_init.sql`, `0002_work_hours_invitations.sql`): vagy a Neon **SQL Editorban** (másold be a fájlok tartalmát), vagy `psql`-lel:
 
@@ -96,7 +96,7 @@ npm run build
 
 Helyi PostgreSQL-lel:
 
-- **RLS és üzleti szabályok** (85 ellenőrzés: tenant-izoláció, több csapat és aktív csapat, meghívók, jóváhagyás, igazolások láthatósága, szerepkörök):
+- **RLS és üzleti szabályok** (93 ellenőrzés: tenant-izoláció, több csapat és aktív csapat, meghívók, jóváhagyás, igazolások láthatósága, szerepkörök):
 
 ```bash
 npm run test:db
@@ -115,7 +115,7 @@ npm run test:integration
 - A kódkérés és a belépés korlátozva van.
 - Minden felhasználói kérés **egy tranzakcióban** fut (`src/lib/db.ts → withUser`):
   `SET LOCAL ROLE kibent_app`, `set_config('app.user_id', …)` és `set_config('app.company_id', …)`. Így minden lekérdezésre érvényesek az RLS szabályok (`app.uid()`), akkor is, ha egy server actionből hiányozna egy szűrés.
-- A `kibent_app` szerepkör nem írhatja közvetlenül a tagságokat és az `ical_token` mezőt, és csapatot sem hozhat létre. Ezek csak `SECURITY DEFINER` RPC-ken keresztül módosulnak: `create_company`, `accept_invitation`, `set_member_role`, `remove_member`.
+- A `kibent_app` szerepkör nem írhatja közvetlenül a tagságokat és az `ical_token` mezőt, és csapatot sem hozhat létre. Ezek csak `SECURITY DEFINER` RPC-ken keresztül módosulnak: `create_company`, `accept_invitation`, `set_member_role`, `remove_member`, `leave_team`.
 - A `schedules_guard` trigger kikényszeríti, hogy egy tag szabadsága csak `pending` lehessen, és hogy az admin más sorában kizárólag a jóváhagyási státuszt módosíthassa (`reviewed_by` automatikusan kitöltődik).
 - Orvosi igazolás: a metaadatot (`medical_documents`) az RLS csak a feltöltőnek és a cég adminjainak mutatja. A fájl privát Vercel Blobban van (`{company_id}/{user_id}/{request_group_id}/…`), és aláírt URL csak RLS-ellenőrzés után készül, 60 másodpercre.
 - Az iCal feed tulajdonosi kapcsolattal fut (`withSystem`), de kizárólag a token gazdájának egy olyan csapatát kérdezi le, amelynek tagja, és megjegyzéseket nem tesz közzé. A token a Beállításokban újragenerálható.
