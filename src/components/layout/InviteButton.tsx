@@ -21,8 +21,8 @@ export function InviteButton() {
         <DialogHeader>
           <DialogTitle>Kollégák meghívása</DialogTitle>
           <DialogDescription>
-            Írd be a kollégáid email címét. A levélben kapott linkkel regisztrálnak, és belépés után automatikusan a
-            csapatban lesznek.
+            Írd be a kollégáid email címét. A levélben kapott gombbal elfogadják a meghívót (ha még nincs fiókjuk,
+            előtte egy perc alatt regisztrálnak), és már bent is vannak.
           </DialogDescription>
         </DialogHeader>
         {open && <InviteForm />}

@@ -1,6 +1,6 @@
 /**
  * Integrációs teszt: a VALÓDI server actionök és az iCal route egy helyi
- * Postgresen (db/migrations + Neon Auth stub). A Neon Auth sessiont és a
+ * Postgresen (db/migrations). A Better Auth munkamenetet, a sütiket és a
  * Vercel Blobot helyettesítjük; minden más (SQL, RLS, triggerek) éles kód.
  *
  * Futtatás: bash db/tests/run-integration.sh
@@ -14,13 +14,27 @@ const DB = process.env.TEST_DATABASE_URL;
 const run = DB ? describe : describe.skip;
 
 // ---- helyettesítések -------------------------------------------------------
-const session = { userId: null as string | null, verified: true };
+const session = { userId: null as string | null };
 // A session email címe egyezik a better_auth."user" címmel (mint élesben)
 const SESSION_EMAILS: Record<string, string> = {
   "00000000-0000-0000-0000-0000000000a1": "anna@acme.hu",
   "00000000-0000-0000-0000-0000000000b1": "bela@acme.hu",
   "00000000-0000-0000-0000-0000000000d1": "dani@acme.hu",
 };
+// Sütik felhasználónként (az aktív csapat sütije)
+const jars = new Map<string, Map<string, string>>();
+const jar = () => {
+  const key = session.userId ?? "anon";
+  if (!jars.has(key)) jars.set(key, new Map());
+  return jars.get(key)!;
+};
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (name: string) => (jar().has(name) ? { name, value: jar().get(name)! } : undefined),
+    set: (name: string, value: string) => void jar().set(name, value),
+  }),
+  headers: async () => new Headers(),
+}));
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -37,12 +51,19 @@ vi.mock("@/lib/auth/server", () => ({
               id: session.userId,
               email: SESSION_EMAILS[session.userId] ?? `${session.userId.slice(-2)}@test.hu`,
               name: "Teszt Elek",
-              emailVerified: session.verified,
+              emailVerified: false,
             },
           }
         : null,
     }),
     updateUser: async () => ({}),
+    // Belépés: a mock a jelenlegi session felhasználóját adja vissza (mint a Better Auth válasza)
+    signIn: {
+      email: async () => ({
+        data: { token: "t", user: { id: session.userId, email: SESSION_EMAILS[session.userId!], name: "Teszt Elek" } },
+        error: null,
+      }),
+    },
   }),
 }));
 const blobs = new Map<string, File>();
@@ -93,17 +114,23 @@ run("integráció (helyi Postgres)", () => {
     const ctx = await getSessionContext();
     expect(ctx?.profile).toMatchObject({ id: ERIK, full_name: "Teszt Elek", role: "member", company_id: null });
     expect(ctx?.company).toBeNull();
+    expect(ctx?.teams).toEqual([]);
   });
 
-  it("onboarding: cég létrehozása és meghívás email címre", async () => {
-    const { createCompanyAction } = await import("@/app/(auth)/actions");
+  it("üres felület -> csapat létrehozása -> meghívó email címre -> elfogadás", async () => {
+    const { createCompanyAction, acceptInvitationAction, signInAction, switchTeamAction } = await import(
+      "@/app/(auth)/actions"
+    );
     const { sendInvitationsAction } = await import("@/app/(dashboard)/settings/actions");
     const { getSessionContext } = await import("@/lib/auth");
     const { getInvitePreview } = await import("@/lib/invitations");
     const InvitePage = (await import("@/app/invite/[token]/page")).default;
 
     as(ANNA);
-    await expectRedirect(createCompanyAction(null, fd({ name: "Acme Kft." })), "/");
+    expect((await getSessionContext())?.company).toBeNull(); // üres felület
+    await expectRedirect(createCompanyAction(null, fd({ name: "Acme Kft." })), "/?new=1");
+    expect((await getSessionContext())?.company?.name).toBe("Acme Kft.");
+    expect((await getSessionContext())?.profile.role).toBe("admin");
 
     expect(await sendInvitationsAction(null, fd({ emails: "bela@acme.hu, nem-email" }))).toMatchObject({
       error: expect.stringContaining("Érvénytelen email cím"),
@@ -115,36 +142,61 @@ run("integráció (helyi Postgres)", () => {
       ["dani@acme.hu", "link"],
     ]);
     const belaToken = sent!.results![0]!.url!.split("/invite/")[1]!;
+    const daniToken = sent!.results![1]!.url!.split("/invite/")[1]!;
 
     // Újraküldés ugyanarra a címre nem duplikál
     await sendInvitationsAction(null, fd({ emails: "bela@acme.hu" }));
     expect((await pool.query("select count(*)::int as n from company_invitations where email = 'bela@acme.hu'")).rows[0].n).toBe(1);
 
-    // Bejelentkezés előtt: a belépő oldal a token alapján kitölti az email címet
-    // (hasAccount attól függ, belépett-e már valaha – trigger nélküli Neonon csak az első belépés után van profil)
-    expect(await getInvitePreview(belaToken)).toMatchObject({ email: "bela@acme.hu", companyName: "Acme Kft.", expired: false });
+    // Bejelentkezés előtt: a belépő oldalra visz (ott kitölti az email címet)
+    expect(await getInvitePreview(belaToken)).toMatchObject({
+      email: "bela@acme.hu",
+      companyName: "Acme Kft.",
+      expired: false,
+      hasAccount: true,
+    });
     session.userId = null;
     await expectRedirect(InvitePage({ params: Promise.resolve({ token: belaToken }) }), `/login?next=%2Finvite%2F${belaToken}`);
 
-    // Más fiókkal megnyitva elutasítja (Dani még nincs megerősítve -> nincs automatikus csatlakozás)
+    // Más fiókkal megnyitva nem csatlakozik automatikusan, figyelmeztet
     as(DANI);
-    session.verified = false;
-    const wrong = JSON.stringify(await InvitePage({ params: Promise.resolve({ token: belaToken }) }));
-    expect(wrong).toContain("bela@acme.hu címre szól");
+    const other = JSON.stringify(await InvitePage({ params: Promise.resolve({ token: belaToken }) }));
+    expect(other).toContain("bela@acme.hu");
+    expect((await getSessionContext())?.company).toBeNull(); // nincs automatikus csatlakozás email alapján
 
-    // A jó fiókkal csatlakozik
+    // Belépett meghívott: elfogad -> a csapatban van
     as(BELA);
-    session.verified = true;
-    await expectRedirect(InvitePage({ params: Promise.resolve({ token: belaToken }) }), "/?welcome=1");
+    await expectRedirect(acceptInvitationAction(null, fd({ token: belaToken })), "/?welcome=1");
+    expect((await getSessionContext())?.company?.name).toBe("Acme Kft.");
     expect((await getSessionContext())?.profile.role).toBe("member");
+    // Felhasznált meghívó újra: már tag -> nem hiba
+    await expectRedirect(acceptInvitationAction(null, fd({ token: belaToken })), "/?welcome=1");
 
-    // Dani: megerősített email -> belépéskor automatikusan a csapatban van
+    // Belépés a meghívó linkről: rögtön csatlakozik
     as(DANI);
-    const dani = await getSessionContext();
-    expect(dani?.company?.name).toBe("Acme Kft.");
+    await expectRedirect(
+      signInAction(null, fd({ email: "dani@acme.hu", password: "titkos-jelszo", next: `/invite/${daniToken}` })),
+      "/?welcome=1",
+    );
+    expect((await getSessionContext())?.company?.name).toBe("Acme Kft.");
+
+    // Több csapat: Dani létrehoz egy sajátot, arra vált, majd vissza
+    await expectRedirect(createCompanyAction(null, fd({ name: "Dani csapata" })), "/?new=1");
+    expect((await getSessionContext())?.company?.name).toBe("Dani csapata");
+    expect((await getSessionContext())?.teams.map((t) => [t.name, t.role])).toEqual([
+      ["Acme Kft.", "member"],
+      ["Dani csapata", "admin"],
+    ]);
+    const acmeId = (await getSessionContext())!.teams[0]!.id;
+    await expectRedirect(switchTeamAction(fd({ teamId: acmeId })), "/");
+    expect((await getSessionContext())?.company?.name).toBe("Acme Kft.");
+    // Idegen csapatra nem válthat
+    const foreign = (await pool.query("select id from companies where name = 'Dani csapata'")).rows[0].id;
+    as(BELA);
+    await expectRedirect(switchTeamAction(fd({ teamId: foreign })), "/");
+    expect((await getSessionContext())?.company?.name).toBe("Acme Kft.");
 
     // Member nem hívhat meg
-    as(BELA);
     await expectRedirect(sendInvitationsAction(null, fd({ emails: "x@pelda.hu" })), "/");
   });
 
@@ -284,10 +336,8 @@ run("integráció (helyi Postgres)", () => {
     await expect(SettingsPage()).resolves.toBeTruthy();
     as(ANNA);
     await expect(RequestsPage()).resolves.toBeTruthy();
-    const companyId = (await pool.query("select id from companies")).rows[0].id;
     const { getSessionContext } = await import("@/lib/auth");
     expect((await getSessionContext())?.pendingCount).toBe(0);
-    void companyId;
   });
 
   it("beállítások: szerepkör, utolsó admin védelme, tag eltávolítása", async () => {
@@ -302,18 +352,22 @@ run("integráció (helyi Postgres)", () => {
     await expectRedirect(removeMemberAction(DANI), "/");
     as(DANI);
     expect(await removeMemberAction(BELA)).toEqual({ ok: true });
-    expect((await pool.query("select company_id from profiles where id = $1", [BELA])).rows[0].company_id).toBeNull();
+    expect((await pool.query("select count(*)::int as n from memberships where user_id = $1", [BELA])).rows[0].n).toBe(0);
+    as(BELA);
+    const { getSessionContext } = await import("@/lib/auth");
+    expect((await getSessionContext())?.company).toBeNull(); // vissza az üres felületre
   });
 
   it("iCal feed: token alapján, csapat opcióval, ismeretlen tokenre 404", async () => {
     const { GET } = await import("@/app/api/ical/[token]/calendar.ics/route");
     const { NextRequest } = await import("next/server");
     const { rows } = await pool.query("select ical_token from profiles where id = $1", [ANNA]);
-    await pool.query(
-      `insert into schedules (company_id, user_id, date, status)
-       select company_id, id, current_date, 'office' from profiles where id = $1`,
-      [DANI],
-    );
+    const acme = (await pool.query("select id from companies where name like 'Acme%'")).rows[0].id as string;
+    const daniTeam = (await pool.query("select id from companies where name = 'Dani csapata'")).rows[0].id as string;
+    await pool.query(`insert into schedules (company_id, user_id, date, status) values ($1, $2, current_date, 'office')`, [
+      acme,
+      DANI,
+    ]);
     const call = (token: string, q = "") =>
       GET(new NextRequest(`https://kibent.test/api/ical/${token}/calendar.ics${q}`), {
         params: Promise.resolve({ token }),
@@ -329,6 +383,11 @@ run("integráció (helyi Postgres)", () => {
     const team = await (await call(rows[0].ical_token, "?team=1")).text();
     // A név a profilból jön (triggeres környezetben „Tóth Dani”, trigger nélkül a session neve).
     expect(team).toMatch(/SUMMARY:\[Kibent\] .+ – Iroda/);
+
+    // Csapat kiválasztása (?c=): Dani saját csapata, illetve olyan csapat, aminek nem tagja -> 404
+    const daniToken = (await pool.query("select ical_token from profiles where id = $1", [DANI])).rows[0].ical_token;
+    expect(await (await call(daniToken, `?c=${daniTeam}`)).text()).toContain("X-WR-CALNAME:Kibent – Dani csapata");
+    expect((await call(rows[0].ical_token, `?c=${daniTeam}`)).status).toBe(404);
 
     expect((await call("00000000-0000-0000-0000-000000000000")).status).toBe(404);
     expect((await call("nem-uuid")).status).toBe(404);

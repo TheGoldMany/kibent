@@ -97,9 +97,9 @@ export default async function LoginPage({
                 <p className="mt-2 text-base">
                   {isInvite
                     ? invite.hasAccount
-                      ? `Lépj be a ${invite.email} címmel, és automatikusan bekerülsz a csapatba.`
-                      : `Regisztrálj a ${invite.email} címmel, és belépés után automatikusan a csapatban leszel.`
-                    : "Új vagy? Válaszd a Regisztrációt, és pár perc alatt kész a céged naptára."}
+                      ? "Lépj be, és már bent is vagy a csapatban."
+                      : "Hozd létre a fiókod, és rögtön a csapatban leszel."
+                    : "Új vagy? A Regisztráció egy perc, utána létrehozhatod a csapatodat."}
                 </p>
               </div>
               <div className="p-6 sm:p-8">

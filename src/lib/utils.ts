@@ -17,3 +17,9 @@ export function initials(name: string): string {
 export function siteUrl(): string {
   return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 }
+
+/** Keresztnév a megszólításhoz (magyar névsorrend: a vezetéknév elöl, ezért az utolsó szó). */
+export function givenName(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 1]! : (parts[0] ?? "");
+}

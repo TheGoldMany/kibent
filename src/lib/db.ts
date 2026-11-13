@@ -1,11 +1,14 @@
 import "server-only";
 import { Pool, types, type PoolClient, type QueryResultRow } from "pg";
 
-// DATE / TIMESTAMP(TZ) maradjon szöveg: a naptárlogika 'yyyy-MM-dd' stringekkel dolgozik,
-// így elkerüljük a JS Date időzóna-csúszását.
-types.setTypeParser(1082, (v) => v); // date
-types.setTypeParser(1114, (v) => v); // timestamp
-types.setTypeParser(1184, (v) => v); // timestamptz
+// Az alkalmazás kapcsolatain a DATE / TIMESTAMP(TZ) maradjon szöveg: a naptárlogika 'yyyy-MM-dd'
+// stringekkel dolgozik, így elkerüljük a JS Date időzóna-csúszását. (A Better Auth kapcsolata
+// a pg alapértelmezését kapja, mert ott Date objektumok kellenek.)
+const TEXT_DATE_OIDS = new Set([1082, 1114, 1184]); // date, timestamp, timestamptz
+const textDateTypes = {
+  getTypeParser: ((oid: number, format?: "text" | "binary") =>
+    TEXT_DATE_OIDS.has(oid) ? (v: string) => v : types.getTypeParser(oid, format)) as typeof types.getTypeParser,
+};
 
 /**
  * Neon Postgres kapcsolat (pooled connection string, pl. ...-pooler.neon.tech).
@@ -29,13 +32,14 @@ function withoutSslParams(connectionString: string): string {
 }
 
 /** Új kapcsolatkészlet a DATABASE_URL-hez. (Kapcsolódáskori search_path-ot a Neon pooler nem enged.) */
-export function createPool(options: { max?: number } = {}): Pool {
+export function createPool(options: { max?: number; dates?: "text" | "native" } = {}): Pool {
   const raw = process.env.DATABASE_URL;
   if (!raw) throw new Error("Hiányzó környezeti változó: DATABASE_URL. Lásd: .env.example");
   const isLocal = /localhost|127\.0\.0\.1/.test(raw);
   return new Pool({
     connectionString: isLocal ? raw : withoutSslParams(raw),
     max: options.max ?? 5,
+    ...(options.dates === "native" ? {} : { types: textDateTypes }),
     idleTimeoutMillis: 10_000,
     // Neon TLS-t követel meg: teljes tanúsítvány-ellenőrzés (verify-full). Helyi teszthez nem kell.
     ssl: isLocal ? undefined : { rejectUnauthorized: true },
@@ -71,15 +75,17 @@ function wrap(client: PoolClient): Tx {
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function withUser<T>(userId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
-  // A felhasználó-azonosító literálként kerül az SQL-be (egyetlen oda-vissza út a három
-  // beállító utasításra), ezért szigorúan UUID-nak kell lennie.
+export async function withUser<T>(userId: string, fn: (tx: Tx) => Promise<T>, companyId?: string | null): Promise<T> {
+  // Az azonosítók literálként kerülnek az SQL-be (egyetlen oda-vissza út a beállító
+  // utasításokra), ezért szigorúan UUID-nak kell lenniük.
   if (!UUID_RE.test(userId)) throw new Error("Érvénytelen felhasználó-azonosító.");
+  if (companyId && !UUID_RE.test(companyId)) throw new Error("Érvénytelen csapat-azonosító.");
   const client = await getPool().connect();
   try {
-    // Egy hálózati kör: tranzakció + korlátozott szerepkör + app.user_id
+    // Egy hálózati kör: tranzakció + korlátozott szerepkör + app.user_id + aktív csapat
     await client.query(
-      `begin; set local role kibent_app; select set_config('app.user_id', '${userId.toLowerCase()}', true)`,
+      `begin; set local role kibent_app; select set_config('app.user_id', '${userId.toLowerCase()}', true), ` +
+        `set_config('app.company_id', '${(companyId ?? "").toLowerCase()}', true)`,
     );
     const result = await fn(wrap(client));
     await client.query("commit");

@@ -8,7 +8,6 @@ import {
   signInAction,
   signInWithCodeAction,
   signUpAction,
-  verifyEmailCodeAction,
   type AuthState,
 } from "@/app/(auth)/actions";
 import { Input } from "@/components/ui/input";
@@ -42,34 +41,6 @@ export function LoginForms({
   const [signInState, signIn] = useActionState(signInAction, initialError ? { error: initialError } : null);
   const [signUpState, signUp] = useActionState(signUpAction, null);
   const [sendCodeState, sendCode] = useActionState(sendSignInCodeAction, null);
-  /** Kódos megerősítés folyamatban erre a címre (regisztráció vagy megerősítetlen belépés után). */
-  const [verifyFor, setVerifyFor] = useState<string | null>(null);
-  const [verifiedNotice, setVerifiedNotice] = useState<AuthState>(null);
-  const [lastSeen, setLastSeen] = useState<{ signIn: AuthState; signUp: AuthState }>({ signIn: null, signUp: null });
-
-  // Ha egy action megerősítést kér, átváltunk a kódos lépésre (renderelés közbeni állapotigazítás).
-  if (signUpState !== lastSeen.signUp || signInState !== lastSeen.signIn) {
-    setLastSeen({ signIn: signInState, signUp: signUpState });
-    const email = (signUpState !== lastSeen.signUp ? signUpState : signInState)?.verifyEmail;
-    if (email) setVerifyFor(email);
-  }
-
-  if (verifyFor) {
-    return (
-      <VerifyEmailStep
-        email={verifyFor}
-        next={next}
-        notice={signInState?.verifyEmail === verifyFor ? signInState : null}
-        onBack={() => setVerifyFor(null)}
-        onVerified={(state) => {
-          setVerifyFor(null);
-          setVerifiedNotice(state);
-          setMode("password");
-        }}
-      />
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div role="tablist" aria-label="Belépési mód" className="grid grid-cols-3 gap-1 rounded-full border-2 border-ink bg-lilac-soft p-1 text-[13px]">
@@ -100,13 +71,12 @@ export function LoginForms({
       {mode === "password" && (
         <form action={signIn} className="space-y-4">
           <input type="hidden" name="next" value={next} />
-          <FormMessage state={verifiedNotice} />
           <Field
             id="email"
             label="Email cím"
             type="email"
             autoComplete="email"
-            defaultValue={signInState?.values?.email ?? verifiedNotice?.verified ?? defaultEmail}
+            defaultValue={signInState?.values?.email ?? defaultEmail}
           />
           <Field id="password" label="Jelszó" type="password" autoComplete="current-password" />
           <FormMessage state={signInState} />
@@ -167,40 +137,6 @@ export function LoginForms({
   );
 }
 
-/** Regisztráció utáni (vagy megerősítetlen belépéskori) kódos email-megerősítés. */
-function VerifyEmailStep({
-  email,
-  next,
-  notice,
-  onBack,
-  onVerified,
-}: {
-  email: string;
-  next: string;
-  notice: AuthState;
-  onBack: () => void;
-  onVerified: (state: AuthState) => void;
-}) {
-  const [state, action] = useActionState(async (prev: AuthState, formData: FormData) => {
-    const result = await verifyEmailCodeAction(prev, formData);
-    if (result?.verified) onVerified(result);
-    return result;
-  }, notice);
-
-  return (
-    <CodeForm
-      title="Erősítsd meg az email címed"
-      email={email}
-      purpose="email-verification"
-      action={action}
-      state={state}
-      submitLabel="Megerősítés"
-      next={next}
-      onBack={onBack}
-    />
-  );
-}
-
 /** Jelszó nélküli belépés 2. lépése: a kapott kód beváltása. */
 function SignInCodeStep({ email, next, onBack }: { email: string; next: string; onBack: () => void }) {
   const [state, action] = useActionState(signInWithCodeAction, null);
@@ -230,7 +166,7 @@ function CodeForm({
 }: {
   title: string;
   email: string;
-  purpose: "email-verification" | "sign-in";
+  purpose: "sign-in";
   action: (formData: FormData) => void;
   state: AuthState;
   submitLabel: string;

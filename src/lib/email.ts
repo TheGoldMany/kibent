@@ -125,13 +125,13 @@ export function invitationEmail(input: {
       title: `Gyere, a(z) ${input.companyName} csapata vár`,
       bodyHtml: `<p style="margin:0">${inviter} meghívott a Kibentbe, ahol a(z) <strong>${company}</strong> csapata látja, ki dolgozik az irodában, ki otthonról, és ki van szabadságon.</p>`,
       cta: { label: "Csatlakozom a csapathoz", url: input.url },
-      footnoteHtml: `Regisztrálj vagy lépj be ezzel az email címmel, és automatikusan bekerülsz a csapatba. A meghívó ${input.expiresInDays} napig érvényes.<br>Ha a gomb nem működik: <a href="${escapeHtml(input.url)}" style="color:${C.ink};word-break:break-all">${escapeHtml(input.url)}</a>`,
+      footnoteHtml: `Kattints a gombra: ha már van fiókod, csak elfogadod, ha nincs, egy perc alatt regisztrálsz, és már bent is vagy. A meghívó ${input.expiresInDays} napig érvényes.<br>Ha a gomb nem működik: <a href="${escapeHtml(input.url)}" style="color:${C.ink};word-break:break-all">${escapeHtml(input.url)}</a>`,
     }),
     text: `${input.inviterName} meghívott a(z) ${input.companyName} csapatnaptárába a Kibentben.
 
 Csatlakozás: ${input.url}
 
-Regisztrálj vagy lépj be ezzel az email címmel, és automatikusan bekerülsz a csapatba. A meghívó ${input.expiresInDays} napig érvényes.`,
+Nyisd meg a linket: ha már van fiókod, csak elfogadod, ha nincs, egy perc alatt regisztrálsz, és már bent is vagy. A meghívó ${input.expiresInDays} napig érvényes.`,
   };
 }
 

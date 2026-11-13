@@ -1,8 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireMember } from "@/lib/auth";
-import { dbErrorMessage, withUser } from "@/lib/db";
+import { requireMember, withMember } from "@/lib/auth";
+import { dbErrorMessage } from "@/lib/db";
 import { firstError, recurringPatternSchema, setDayStatusSchema } from "@/lib/validations";
 import type { WorkStatus } from "@/lib/database.types";
 import type { FormState } from "@/components/ui/form-message";
@@ -19,10 +19,10 @@ export async function setDayStatusAction(date: string, status: WorkStatus | null
 
   let blocked = false;
   try {
-    await withUser(ctx.userId, async (tx) => {
+    await withMember(ctx, async (tx) => {
       const existing = await tx.one<{ status: string; approval_status: string }>(
-        "select status, approval_status from schedules where user_id = $1 and date = $2 for update",
-        [ctx.userId, day],
+        "select status, approval_status from schedules where user_id = $1 and date = $2 and company_id = $3 for update",
+        [ctx.userId, day, ctx.company.id],
       );
       if (
         existing &&
@@ -33,12 +33,12 @@ export async function setDayStatusAction(date: string, status: WorkStatus | null
         return;
       }
       if (next === null) {
-        await tx.query("delete from schedules where user_id = $1 and date = $2", [ctx.userId, day]);
+        await tx.query("delete from schedules where user_id = $1 and date = $2 and company_id = $3", [ctx.userId, day, ctx.company.id]);
       } else {
         await tx.query(
           `insert into schedules (company_id, user_id, date, status, approval_status, request_group_id, note)
            values ($1, $2, $3, $4, 'approved', null, null)
-           on conflict (user_id, date) do update
+           on conflict (user_id, company_id, date) do update
              set status = excluded.status, approval_status = 'approved', request_group_id = null, note = null`,
           [ctx.company.id, ctx.userId, day, next],
         );
@@ -76,11 +76,11 @@ export async function saveRecurringPatternAction(_prev: FormState, formData: For
   const ctx = await requireMember();
   const p = parsed.data;
   try {
-    await withUser(ctx.userId, (tx) =>
+    await withMember(ctx, (tx) =>
       tx.query(
         `insert into recurring_patterns (user_id, company_id, mon, tue, wed, thu, fri)
          values ($1, $2, $3, $4, $5, $6, $7)
-         on conflict (user_id) do update
+         on conflict (user_id, company_id) do update
            set mon = excluded.mon, tue = excluded.tue, wed = excluded.wed, thu = excluded.thu, fri = excluded.fri`,
         [ctx.userId, ctx.company.id, p.mon, p.tue, p.wed, p.thu, p.fri],
       ),

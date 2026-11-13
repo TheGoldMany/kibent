@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getAuth } from "@/lib/auth/server";
 import { getSessionContext, safeNext } from "@/lib/auth";
+import { acceptInvitation, setActiveTeamCookie } from "@/lib/teams";
+import { inviteTokenFromPath } from "@/lib/invitations";
 import { dbErrorMessage, withUser } from "@/lib/db";
 import { z } from "zod";
 import { allowCodeEmail, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
@@ -11,10 +13,10 @@ import { siteUrl } from "@/lib/utils";
 import {
   companyNameSchema,
   firstError,
-  inviteCodeSchema,
   loginSchema,
   magicLinkSchema,
   signupSchema,
+  uuidSchema,
 } from "@/lib/validations";
 import type { FormState } from "@/components/ui/form-message";
 
@@ -24,7 +26,6 @@ function authErrorHu(message: string | undefined): string {
   if (/invalid login credentials|invalid email or password|invalid password/i.test(message)) {
     return "Hibás email cím vagy jelszó.";
   }
-  if (/email not (confirmed|verified)/i.test(message)) return "Előbb erősítsd meg az email címed az emailben kapott kóddal.";
   if (/invalid otp|invalid code|otp.*(invalid|incorrect)/i.test(message)) return "Hibás kód. Ellenőrizd, és próbáld újra.";
   if (/otp.*expired|code.*expired|expired/i.test(message)) return "A kód lejárt. Kérj újat.";
   if (/too many attempts/i.test(message)) return "Túl sok hibás próbálkozás. Kérj új kódot.";
@@ -42,23 +43,35 @@ function authErrorHu(message: string | undefined): string {
   return message;
 }
 
+/**
+ * Belépés/regisztráció utáni cél. Ha meghívó linkről jött, rögtön csatlakozik a csapathoz
+ * (a frissen létrejött munkamenettel), és a csapat naptárába érkezik.
+ */
+async function afterAuth(next: string, data: unknown): Promise<string> {
+  const token = inviteTokenFromPath(next);
+  const user = (data as { user?: { id?: string; email?: string; name?: string } } | null)?.user;
+  if (!token || !user?.id) return next;
+  const userId = user.id;
+  try {
+    // Az új munkamenet sütije ebben a kérésben még nem látszik, ezért a visszakapott felhasználóval dolgozunk.
+    await withUser(userId, (tx) => tx.query("select public.ensure_profile($1, $2)", [user.email ?? "", user.name ?? ""]));
+  } catch (e) {
+    console.error("[invite] ensure_profile", e);
+    return next;
+  }
+  const result = await acceptInvitation(userId, token);
+  return "error" in result ? next : "/?welcome=1";
+}
+
 /** Az auth űrlapok állapota: hibák/üzenetek + a kódos lépéshez szükséges email cím. */
 export type AuthState =
   | (FormState & {
-      /** Erre a címre ment ki megerősítő kód (regisztráció / megerősítetlen belépés). */
-      verifyEmail?: string;
       /** Erre a címre ment ki belépő kód (jelszó nélküli belépés). */
       codeSentTo?: string;
-      /** A megerősítés kész, de nincs session – jelszóval kell belépni. */
-      verified?: string;
       /** Hiba esetén a beírt értékek (a React 19 action után üríti az űrlapot). Jelszót soha. */
       values?: { email?: string; fullName?: string };
     })
   | null;
-
-function hasToken(data: unknown): boolean {
-  return !!data && typeof data === "object" && "token" in data && !!(data as { token?: unknown }).token;
-}
 
 const otpSchema = z.object({
   email: z.string().trim().email("Érvénytelen email cím."),
@@ -73,20 +86,12 @@ export async function signInAction(_prev: AuthState, formData: FormData): Promis
   const parsed = loginSchema.safeParse({ email: formData.get("email"), password: formData.get("password") });
   if (!parsed.success) return { error: firstError(parsed.error), values };
 
-  const { error } = await getAuth().signIn.email(parsed.data);
+  const { data, error } = await getAuth().signIn.email(parsed.data);
   if (error) {
-    // Megerősítetlen email: a kódos lépésre váltunk. Nem küldünk automatikusan új kódot,
-    // mert az érvényteleníthetné a már kiküldöttet – a felhasználó kérhet újat.
-    if (/email not (confirmed|verified)/i.test(error.message ?? "")) {
-      return {
-        error: "Az email címed még nincs megerősítve. Írd be a kapott kódot, vagy kérj újat.",
-        verifyEmail: parsed.data.email,
-      };
-    }
     return { error: authErrorHu(error.message), values };
   }
 
-  redirect(safeNext(formData.get("next")));
+  redirect(await afterAuth(safeNext(formData.get("next")), data));
 }
 
 export async function signUpAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
@@ -107,30 +112,14 @@ export async function signUpAction(_prev: AuthState, formData: FormData): Promis
   });
   if (error) return { error: authErrorHu(error.message), values };
 
-  // Ha az email megerősítés ki van kapcsolva, a regisztráció után azonnal van session.
-  // (Better Auth: a token null, ha email megerősítés szükséges – ilyenkor kódot küld.)
-  if (hasToken(data)) redirect(next);
-  return { verifyEmail: parsed.data.email };
+  // Nincs email-megerősítés: a regisztráció után azonnal be van lépve.
+  redirect(await afterAuth(next, data));
 }
 
-/** A regisztrációkor (vagy megerősítetlen belépéskor) emailben kapott kód ellenőrzése. */
-export async function verifyEmailCodeAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
-  const email = String(formData.get("email") ?? "");
-  const parsed = otpSchema.safeParse({ email, otp: formData.get("otp") });
-  if (!parsed.success) return { error: firstError(parsed.error), verifyEmail: email };
-
-  const { data, error } = await getAuth().emailOtp.verifyEmail(parsed.data);
-  if (error) return { error: authErrorHu(error.message), verifyEmail: email };
-
-  // Ha a Neon Auth megerősítés után automatikusan beléptet, mehetünk tovább.
-  if (hasToken(data)) redirect(safeNext(formData.get("next")));
-  return { verified: parsed.data.email, success: "Az email címed megerősítve. Most lépj be a jelszavaddal." };
-}
-
-/** Új kód kérése (megerősítéshez vagy jelszó nélküli belépéshez). */
+/** Új belépő kód kérése (jelszó nélküli belépés). */
 export async function resendCodeAction(
   email: string,
-  purpose: "email-verification" | "sign-in",
+  purpose: "sign-in",
 ): Promise<{ ok: boolean; message: string }> {
   const parsed = magicLinkSchema.safeParse({ email });
   if (!parsed.success) return { ok: false, message: firstError(parsed.error) };
@@ -158,10 +147,10 @@ export async function signInWithCodeAction(_prev: AuthState, formData: FormData)
   const parsed = otpSchema.safeParse({ email, otp: formData.get("otp") });
   if (!parsed.success) return { error: firstError(parsed.error), codeSentTo: email };
 
-  const { error } = await getAuth().signIn.emailOtp(parsed.data);
+  const { data, error } = await getAuth().signIn.emailOtp(parsed.data);
   if (error) return { error: authErrorHu(error.message), codeSentTo: email };
 
-  redirect(safeNext(formData.get("next")));
+  redirect(await afterAuth(safeNext(formData.get("next")), data));
 }
 
 export async function signOutAction() {
@@ -169,38 +158,46 @@ export async function signOutAction() {
   redirect("/login");
 }
 
+/** Új csapat: a létrehozó admin lesz, és rögtön erre a csapatra vált. */
 export async function createCompanyAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const parsed = companyNameSchema.safeParse({ name: formData.get("name") });
   if (!parsed.success) return { error: firstError(parsed.error) };
 
-  // getSessionContext biztosítja a profilt (trigger nélküli Neon környezetben is).
-  const ctx = await getSessionContext();
+  const ctx = await getSessionContext(); // biztosítja a profilt is
   if (!ctx) redirect("/login");
-  const userId = ctx.userId;
+  let companyId: string;
   try {
-    await withUser(userId, (tx) => tx.query("select public.create_company($1)", [parsed.data.name]));
+    const row = await withUser(ctx.userId, (tx) =>
+      tx.one<{ id: string }>("select public.create_company($1) as id", [parsed.data.name]),
+    );
+    if (!row) throw new Error("Nem sikerült létrehozni a csapatot.");
+    companyId = row.id;
   } catch (error) {
     return { error: dbErrorMessage(error) };
   }
 
+  await setActiveTeamCookie(companyId);
+  revalidatePath("/", "layout");
+  redirect("/?new=1");
+}
+
+/** Csapatváltás: a süti csak akkor számít, ha a felhasználó tényleg tagja (getSessionContext ellenőrzi). */
+export async function switchTeamAction(formData: FormData) {
+  const parsed = uuidSchema.safeParse(formData.get("teamId"));
+  const ctx = await getSessionContext();
+  if (!ctx) redirect("/login");
+  if (parsed.success && ctx.teams.some((t) => t.id === parsed.data)) await setActiveTeamCookie(parsed.data);
   revalidatePath("/", "layout");
   redirect("/");
 }
 
-export async function joinCompanyAction(_prev: FormState, formData: FormData): Promise<FormState> {
-  const parsed = inviteCodeSchema.safeParse({ code: formData.get("code") });
-  if (!parsed.success) return { error: firstError(parsed.error) };
-
-  // getSessionContext biztosítja a profilt (trigger nélküli Neon környezetben is).
+/** Meghívó elfogadása a bejelentkezett fiókkal (a meghívó link a bizonyíték). */
+export async function acceptInvitationAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  const parsed = uuidSchema.safeParse(formData.get("token"));
+  if (!parsed.success) return { error: "Ez a meghívó link érvénytelen." };
   const ctx = await getSessionContext();
-  if (!ctx) redirect("/login");
-  const userId = ctx.userId;
-  try {
-    await withUser(userId, (tx) => tx.query("select public.join_company($1)", [parsed.data.code]));
-  } catch (error) {
-    return { error: dbErrorMessage(error) };
-  }
-
-  revalidatePath("/", "layout");
-  redirect("/");
+  if (!ctx) redirect(`/login?next=${encodeURIComponent(`/invite/${parsed.data}`)}`);
+  const result = await acceptInvitation(ctx.userId, parsed.data);
+  if ("error" in result) return { error: result.error };
+  redirect("/?welcome=1");
 }

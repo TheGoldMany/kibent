@@ -11,8 +11,8 @@ import { siteUrl } from "@/lib/utils";
 
 /**
  * Saját Better Auth (az alkalmazáson belül, a Neon adatbázis `better_auth` sémájában).
- * Email + jelszó, megerősítés 6 jegyű kóddal, kódos belépés; a leveleket közvetlenül
- * a Resend küldi a Kibent-dizájnnal.
+ * Email + jelszó (regisztráció után azonnal belép, nincs megerősítő levél), opcionálisan
+ * kódos belépés; a leveleket közvetlenül a Resend küldi a Kibent-dizájnnal.
  */
 
 /** Minden cím, ahonnan az app elérhető (egyedi domain, www, Vercel URL-ek). */
@@ -51,7 +51,7 @@ function createAuth() {
     // A Neon pooler nem enged kapcsolódáskori search_path-ot, ezért a séma-minősítést
     // maga a Better Auth végzi minden lekérdezésben.
     database: {
-      dialect: new PostgresDialect({ pool: createPool({ max: 3 }) }),
+      dialect: new PostgresDialect({ pool: createPool({ max: 3, dates: "native" }) }),
       type: "postgres",
       schemaName: "better_auth",
     },
@@ -59,14 +59,12 @@ function createAuth() {
     advanced: { database: { generateId: "uuid" } },
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: true,
+      requireEmailVerification: false,
+      autoSignIn: true,
       minPasswordLength: 8,
       maxPasswordLength: 128,
     },
-    emailVerification: {
-      sendOnSignUp: true,
-      autoSignInAfterVerification: true,
-    },
+    emailVerification: { sendOnSignUp: false },
     session: {
       // A munkamenet adatai 5 percig sütiben gyorsítótárazva: nincs adatbázis-kör minden oldalon.
       cookieCache: { enabled: true, maxAge: 5 * 60 },
@@ -77,7 +75,7 @@ function createAuth() {
         otpLength: 6,
         expiresIn: 10 * 60,
         overrideDefaultEmailVerification: true,
-        sendVerificationOnSignUp: true,
+        sendVerificationOnSignUp: false,
         // Kódos belépés csak meglévő fiókkal (új fiók: Regisztráció)
         disableSignUp: true,
         async sendVerificationOTP({ email, otp, type }) {

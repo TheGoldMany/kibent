@@ -242,3 +242,14 @@ describe("magyar dátumragok", () => {
     expect(dayPhraseHu("2026-11-19", true)).toBe("nov. 19-én, csütörtökön");
   });
 });
+
+import { givenName } from "./utils";
+
+describe("givenName", () => {
+  it("magyar névsorrend: az utolsó szó a keresztnév", () => {
+    expect(givenName("Kovács Anna")).toBe("Anna");
+    expect(givenName("  Nagy  Béla Ádám ")).toBe("Ádám");
+    expect(givenName("bela")).toBe("bela");
+    expect(givenName("")).toBe("");
+  });
+});

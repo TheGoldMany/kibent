@@ -18,11 +18,13 @@ export function UserMenu({
   email,
   isAdmin,
   companyName,
+  hasTeam,
 }: {
   fullName: string;
   email: string;
   isAdmin: boolean;
-  companyName: string;
+  companyName: string | null;
+  hasTeam: boolean;
 }) {
   return (
     <DropdownMenu>
@@ -36,18 +38,24 @@ export function UserMenu({
         <DropdownMenuLabel className="space-y-0.5">
           <p className="truncate">{fullName}</p>
           <p className="truncate text-xs font-normal text-muted-foreground">{email}</p>
-          <p className="truncate pt-2 font-display text-base italic">{companyName}</p>
-          <p className="flex items-center gap-1 text-xs font-normal">
-            {isAdmin && <ShieldCheck className="h-3.5 w-3.5" />}
-            {isAdmin ? "Adminisztrátor" : "Tag"}
-          </p>
+          {companyName && (
+            <>
+              <p className="truncate pt-2 font-display text-base italic">{companyName}</p>
+              <p className="flex items-center gap-1 text-xs font-normal">
+                {isAdmin && <ShieldCheck className="h-3.5 w-3.5" />}
+                {isAdmin ? "Adminisztrátor" : "Tag"}
+              </p>
+            </>
+          )}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/settings">
-            <Settings /> Beállítások
-          </Link>
-        </DropdownMenuItem>
+        {hasTeam && (
+          <DropdownMenuItem asChild>
+            <Link href="/settings">
+              <Settings /> Beállítások
+            </Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onSelect={() => void signOutAction()}>
           <LogOut /> Kijelentkezés
         </DropdownMenuItem>

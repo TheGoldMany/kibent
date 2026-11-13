@@ -5,8 +5,9 @@ import { StatusLegend } from "@/components/calendar/StatusLegend";
 import { TeamMatrix } from "@/components/calendar/TeamMatrix";
 import { RecurringPatternModal } from "@/components/calendar/RecurringPatternModal";
 import { LeaveRequestModal } from "@/components/calendar/LeaveRequestModal";
-import { requireMember } from "@/lib/auth";
-import { withUser } from "@/lib/db";
+import { EmptyWorkspace } from "@/components/teams/EmptyWorkspace";
+import { givenName } from "@/lib/utils";
+import { requireSession, withMember, type MemberContext } from "@/lib/auth";
 import { hasV2Schema } from "@/lib/schema";
 import type { PatternDays, ScheduleLike } from "@/lib/schedule-resolver";
 import type { Role, WorkHours } from "@/lib/database.types";
@@ -17,10 +18,13 @@ export const metadata: Metadata = { title: "Csapatnaptár" };
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; date?: string; welcome?: string }>;
+  searchParams: Promise<{ view?: string; date?: string; welcome?: string; new?: string }>;
 }) {
   const params = await searchParams;
-  const ctx = await requireMember();
+  const session = await requireSession();
+  // Még nincs csapat: üres felület, ahol létrehozhat egyet.
+  if (!session.company) return <EmptyWorkspace firstName={givenName(session.profile.full_name)} email={session.profile.email} />;
+  const ctx = session as MemberContext;
   const today = todayISO();
   const view: ViewMode = VIEW_MODES.includes(params.view as ViewMode) ? (params.view as ViewMode) : "week";
   const anchor = isISODate(params.date) ? params.date : today;
@@ -28,7 +32,7 @@ export default async function DashboardPage({
 
   const v2 = await hasV2Schema();
   // Egyetlen adatbázis-kör: tagok, heti rutinok és az időszak bejegyzései JSON-ként.
-  const data = await withUser(ctx.userId, (tx) =>
+  const data = await withMember(ctx, (tx) =>
     tx.one<{
       members: { id: string; full_name: string; role: Role }[];
       patterns: (PatternDays & { user_id: string })[];
@@ -36,8 +40,8 @@ export default async function DashboardPage({
       work_hours: WorkHours[];
     }>(
       `select
-         coalesce((select json_agg(json_build_object('id', id, 'full_name', full_name, 'role', role))
-                     from profiles where company_id = $1), '[]') as members,
+         coalesce((select json_agg(json_build_object('id', p.id, 'full_name', p.full_name, 'role', m.role))
+                     from memberships m join profiles p on p.id = m.user_id where m.company_id = $1), '[]') as members,
          coalesce((select json_agg(json_build_object('user_id', user_id, 'mon', mon, 'tue', tue,
                                                      'wed', wed, 'thu', thu, 'fri', fri))
                      from recurring_patterns where company_id = $1), '[]') as patterns,
@@ -71,6 +75,12 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-6">
+      {params.new && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-ink bg-butter px-4 py-3 text-sm font-medium shadow-brutal-xs">
+          <PartyPopper className="h-4 w-4" />
+          Kész a(z) {ctx.company.name} csapat! Hívd meg a kollégáidat a „Kollégák meghívása” gombbal.
+        </div>
+      )}
       {params.welcome && (
         <div className="flex items-center gap-2 rounded-xl border-2 border-ink bg-emerald-100 px-4 py-3 text-sm font-medium shadow-brutal-xs">
           <PartyPopper className="h-4 w-4" />

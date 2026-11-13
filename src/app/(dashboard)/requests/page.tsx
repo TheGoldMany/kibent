@@ -7,8 +7,7 @@ import { CancelRequestButton, UploadDocForm } from "@/components/requests/MyRequ
 import { RequestSummary } from "@/components/requests/RequestCard";
 import { LeaveRequestModal } from "@/components/calendar/LeaveRequestModal";
 import { Card, CardContent } from "@/components/ui/card";
-import { requireMember } from "@/lib/auth";
-import { withUser } from "@/lib/db";
+import { requireMember, withMember } from "@/lib/auth";
 import { formatRangeHu, parseISODate, toISODate, todayISO } from "@/lib/dates";
 import { groupRequests, type LeaveRequestGroup, type RequestRow } from "@/lib/requests";
 
@@ -27,7 +26,7 @@ export default async function RequestsPage() {
     `json_build_object('user_id', ${r}.user_id, 'date', ${r}.date, 'status', ${r}.status,
        'approval_status', ${r}.approval_status, 'request_group_id', ${r}.request_group_id,
        'note', ${r}.note, 'created_at', ${r}.created_at, 'reviewed_by', ${r}.reviewed_by)`;
-  const data = await withUser(ctx.userId, (tx) =>
+  const data = await withMember(ctx, (tx) =>
     tx.one<{
       own: RequestRow[];
       pending: RequestRow[];
@@ -46,8 +45,8 @@ export default async function RequestsPage() {
                     where $4 and s.company_id = $1 and s.status in ('sick', 'vacation')
                       and s.approval_status <> 'pending' and s.user_id <> $2
                       and s.request_group_id is not null and s.date >= $3), '[]') as team,
-         coalesce((select json_agg(json_build_object('id', id, 'full_name', full_name))
-                     from profiles where company_id = $1), '[]') as members,
+         coalesce((select json_agg(json_build_object('id', p.id, 'full_name', p.full_name))
+                     from memberships m join profiles p on p.id = m.user_id where m.company_id = $1), '[]') as members,
          -- RLS: member csak a sajátját, admin a cég összes igazolását kapja vissza
          coalesce((select json_agg(json_build_object('id', id, 'request_group_id', request_group_id,
                                                      'file_name', file_name, 'mime_type', mime_type,

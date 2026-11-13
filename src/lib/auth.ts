@@ -1,90 +1,111 @@
 import "server-only";
 import { cache } from "react";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getAuth } from "@/lib/auth/server";
-import { withUser } from "@/lib/db";
-import { hasV2Schema } from "@/lib/schema";
-import type { Company, Profile } from "@/lib/database.types";
+import { withUser, type Tx } from "@/lib/db";
+import type { Company, Profile, Role } from "@/lib/database.types";
+
+export const ACTIVE_TEAM_COOKIE = "kibent_team";
+
+export type TeamSummary = { id: string; name: string; role: Role };
 
 export type SessionContext = {
   userId: string;
+  /** A profil; a `role` és a `company_id` az AKTÍV csapatra vonatkozik. */
   profile: Profile;
+  /** Az aktív csapat (null, ha még nincs csapata). */
   company: Company | null;
-  /** Függő szabadságkérelmek száma (csak adminnak, egyébként 0). */
+  /** A felhasználó összes csapata (a csapatváltóhoz). */
+  teams: TeamSummary[];
+  /** Függő szabadságkérelmek száma az aktív csapatban (csak adminnak, egyébként 0). */
   pendingCount: number;
 };
 
-type SessionUser = { id: string; email: string; name: string; emailVerified: boolean };
+type SessionUser = { id: string; email: string; name: string };
 
-/** A bejelentkezett Neon Auth felhasználó (vagy null). */
+/** A bejelentkezett felhasználó (vagy null). */
 const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const { data } = await getAuth().getSession();
   const user = data?.user;
   if (!user?.id) return null;
-  return {
-    id: user.id,
-    email: user.email ?? "",
-    name: user.name ?? "",
-    emailVerified: Boolean((user as { emailVerified?: boolean }).emailVerified),
-  };
+  return { id: user.id, email: user.email ?? "", name: user.name ?? "" };
 });
 
-/** A bejelentkezett Neon Auth felhasználó azonosítója (vagy null). */
+/** A bejelentkezett felhasználó azonosítója (vagy null). */
 export const getSessionUserId = cache(async (): Promise<string | null> => (await getSessionUser())?.id ?? null);
 
-/**
- * Egyetlen lekérdezés: profil + cég + (adminnak) a függő szabadságkérelmek száma.
- * Kevesebb adatbázis-kör = gyorsabb oldalbetöltés.
- */
-const SESSION_SQL = `
-  select row_to_json(p) as profile,
-         case when c.id is null then null
-              else json_build_object('id', c.id, 'name', c.name, 'invite_code', c.invite_code,
-                                     -- to_jsonb: a 0002-es migráció előtt is működik (alapérték 30)
-                                     'lunch_minutes', coalesce((to_jsonb(c) ->> 'lunch_minutes')::int, 30),
-                                     'created_at', c.created_at)
-         end as company,
-         case when p.role = 'admin' and p.company_id is not null then (
-           select count(distinct coalesce(s.request_group_id::text, s.user_id::text))::int
-             from schedules s
-            where s.company_id = p.company_id and s.approval_status = 'pending'
-         ) else 0 end as pending_count
-    from (select id, company_id, email, full_name, avatar_url, role, ical_token, created_at
-            from profiles where id = $1) p
-    left join companies c on c.id = p.company_id`;
+const PROFILE_SQL = `select id, company_id, email, full_name, avatar_url, role, ical_token, created_at
+                       from profiles where id = $1`;
 
-type SessionRow = { profile: Profile; company: Company | null; pending_count: number };
-
-/** Kérésenként egyszer lekérdezett session + profil + cég. */
+/** Kérésenként egyszer: profil, csapatok, aktív csapat (sütiből, ha tagja). */
 export const getSessionContext = cache(async (): Promise<SessionContext | null> => {
   const user = await getSessionUser();
   if (!user) return null;
   const userId = user.id;
+  const wanted = (await cookies()).get(ACTIVE_TEAM_COOKIE)?.value ?? null;
 
-  return withUser(userId, async (tx) => {
-    let row = await tx.one<SessionRow>(SESSION_SQL, [userId]);
-    if (!row) {
-      // Első belépés olyan környezetben, ahol a neon_auth trigger nem fut.
+  const base = await withUser(userId, async (tx) => {
+    let profile = await tx.one<Profile>(PROFILE_SQL, [userId]);
+    if (!profile) {
       await tx.query("select public.ensure_profile($1, $2)", [user.email, user.name]);
-      row = await tx.one<SessionRow>(SESSION_SQL, [userId]);
+      profile = await tx.one<Profile>(PROFILE_SQL, [userId]);
     }
-    if (!row) return null;
-    // Még nincs cég, de a (megerősített) email címre nyitott meghívó szól: automatikus csatlakozás.
-    if (!row.company && user.emailVerified && (await hasV2Schema())) {
-      const joined = await tx.one<{ company_id: string | null }>("select public.accept_pending_invitation() as company_id");
-      if (joined?.company_id) row = (await tx.one<SessionRow>(SESSION_SQL, [userId])) ?? row;
-    }
-    return { userId, profile: row.profile, company: row.company, pendingCount: row.pending_count };
+    if (!profile) return null;
+    const teams = await tx.query<TeamSummary & Company>(
+      `select c.id, c.name, c.invite_code, coalesce((to_jsonb(c) ->> 'lunch_minutes')::int, 30) as lunch_minutes,
+              c.created_at, m.role
+         from memberships m join companies c on c.id = m.company_id
+        where m.user_id = $1
+        order by m.created_at, c.name`,
+      [userId],
+    );
+    return { profile, teams };
   });
+  if (!base) return null;
+
+  const active = base.teams.find((t) => t.id === wanted) ?? base.teams[0] ?? null;
+  let pendingCount = 0;
+  if (active?.role === "admin") {
+    pendingCount = await withUser(
+      userId,
+      async (tx) =>
+        (
+          await tx.one<{ n: number }>(
+            `select count(distinct coalesce(request_group_id::text, user_id::text))::int as n
+               from schedules where company_id = $1 and approval_status = 'pending'`,
+            [active.id],
+          )
+        )?.n ?? 0,
+      active.id,
+    );
+  }
+
+  const company: Company | null = active
+    ? { id: active.id, name: active.name, invite_code: active.invite_code, lunch_minutes: active.lunch_minutes, created_at: active.created_at }
+    : null;
+  return {
+    userId,
+    profile: { ...base.profile, company_id: active?.id ?? null, role: active?.role ?? "member" },
+    company,
+    teams: base.teams.map((t) => ({ id: t.id, name: t.name, role: t.role })),
+    pendingCount,
+  };
 });
 
 export type MemberContext = SessionContext & { company: Company };
 
-/** Bejelentkezett, céghez tartozó felhasználó – különben átirányít. */
-export async function requireMember(): Promise<MemberContext> {
+/** Bejelentkezett felhasználó – különben a belépőoldalra irányít. */
+export async function requireSession(): Promise<SessionContext> {
   const ctx = await getSessionContext();
   if (!ctx) redirect("/login");
-  if (!ctx.company) redirect("/onboarding");
+  return ctx;
+}
+
+/** Bejelentkezett, és van aktív csapata – különben a kezdőlapra (üres felület). */
+export async function requireMember(): Promise<MemberContext> {
+  const ctx = await requireSession();
+  if (!ctx.company) redirect("/");
   return ctx as MemberContext;
 }
 
@@ -92,6 +113,11 @@ export async function requireAdmin(): Promise<MemberContext> {
   const ctx = await requireMember();
   if (ctx.profile.role !== "admin") redirect("/");
   return ctx;
+}
+
+/** Tranzakció a felhasználó és az AKTÍV csapat kontextusában (RLS). */
+export function withMember<T>(ctx: { userId: string; company: { id: string } | null }, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return withUser(ctx.userId, fn, ctx.company?.id ?? null);
 }
 
 /** Nyílt átirányítás elleni védelem: csak relatív, saját útvonal. */

@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireAdmin, requireMember, type MemberContext } from "@/lib/auth";
+import { requireAdmin, requireMember, type MemberContext, withMember } from "@/lib/auth";
 import { deletePrivate, signedReadUrl, uploadPrivate } from "@/lib/blob";
-import { dbErrorMessage, withUser } from "@/lib/db";
+import { dbErrorMessage } from "@/lib/db";
 import { todayISO, workdaysBetween } from "@/lib/dates";
 import {
   firstError,
@@ -37,7 +37,7 @@ async function uploadMedicalDoc(ctx: MemberContext, groupId: string, file: File)
   const path = `${ctx.company.id}/${ctx.userId}/${groupId}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
 
   // 1. Jogosultság: csak saját betegszabadsághoz (rövid tranzakció, mielőtt bármit feltöltünk)
-  const owns = await withUser(ctx.userId, (tx) =>
+  const owns = await withMember(ctx, (tx) =>
     tx.one<{ ok: boolean }>(
       "select exists (select 1 from schedules where user_id = $1 and request_group_id = $2 and status = 'sick') as ok",
       [ctx.userId, groupId],
@@ -55,7 +55,7 @@ async function uploadMedicalDoc(ctx: MemberContext, groupId: string, file: File)
 
   // 3. Metaadat; ha ez elbukik, a fájlt töröljük, hogy ne maradjon gazdátlan
   try {
-    await withUser(ctx.userId, (tx) =>
+    await withMember(ctx, (tx) =>
       tx.query(
         `insert into medical_documents (company_id, user_id, request_group_id, storage_path, file_name, mime_type)
          values ($1, $2, $3, $4, $5, $6)`,
@@ -95,16 +95,16 @@ export async function createLeaveRequestAction(_prev: FormState, formData: FormD
 
   let conflict: string | null = null;
   try {
-    await withUser(ctx.userId, async (tx) => {
+    await withMember(ctx, async (tx) => {
       // Felhasználónkénti zár: két párhuzamos kérelem ne írja felül egymást
       await tx.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [ctx.userId]);
       // Ütközés meglévő (nem elutasított) szabadsággal / betegszabadsággal
       const hit = await tx.one<{ date: string }>(
         `select date from schedules
-          where user_id = $1 and date = any($2::date[])
+          where user_id = $1 and date = any($2::date[]) and company_id = $3
             and status in ('vacation', 'sick') and approval_status <> 'rejected'
           order by date limit 1`,
-        [ctx.userId, days],
+        [ctx.userId, days, ctx.company.id],
       );
       if (hit) {
         conflict = hit.date;
@@ -113,7 +113,7 @@ export async function createLeaveRequestAction(_prev: FormState, formData: FormD
       await tx.query(
         `insert into schedules (company_id, user_id, date, status, approval_status, request_group_id, note)
          select $1, $2, d, $4, $5, $6, $7 from unnest($3::date[]) as d
-         on conflict (user_id, date) do update
+         on conflict (user_id, company_id, date) do update
            set status = excluded.status, approval_status = excluded.approval_status,
                request_group_id = excluded.request_group_id, note = excluded.note`,
         [ctx.company.id, ctx.userId, days, type, approval, groupId, note],
@@ -151,7 +151,7 @@ export async function reviewRequestAction(groupId: string, decision: "approved" 
   const ctx = await requireAdmin();
   let updated: { id: string }[] = [];
   try {
-    updated = await withUser(ctx.userId, (tx) =>
+    updated = await withMember(ctx, (tx) =>
       tx.query<{ id: string }>(
         `update schedules set approval_status = $1
           where company_id = $2 and request_group_id = $3
@@ -177,7 +177,7 @@ export async function cancelRequestAction(groupId: string): Promise<Result> {
   type Outcome = { error: string } | { paths: string[] };
   let outcome: Outcome;
   try {
-    outcome = await withUser(ctx.userId, async (tx): Promise<Outcome> => {
+    outcome = await withMember(ctx, async (tx): Promise<Outcome> => {
       const rows = await tx.query<{ date: string; approval_status: string }>(
         "select date, approval_status from schedules where user_id = $1 and request_group_id = $2 for update",
         [ctx.userId, parsedId.data],
@@ -228,7 +228,7 @@ export async function getMedicalDocUrlAction(
 
   const ctx = await requireMember();
   // RLS: csak a feltöltő és a cég adminja kap vissza sort.
-  const doc = await withUser(ctx.userId, (tx) =>
+  const doc = await withMember(ctx, (tx) =>
     tx.one<{ storage_path: string; mime_type: string; file_name: string }>(
       "select storage_path, mime_type, file_name from medical_documents where id = $1",
       [parsedId.data],
@@ -252,7 +252,7 @@ export async function deleteMedicalDocAction(docId: string): Promise<Result> {
   const ctx = await requireMember();
   let path: string | null;
   try {
-    path = await withUser(ctx.userId, async (tx) => {
+    path = await withMember(ctx, async (tx) => {
       const row = await tx.one<{ storage_path: string }>(
         "delete from medical_documents where id = $1 returning storage_path",
         [parsedId.data],

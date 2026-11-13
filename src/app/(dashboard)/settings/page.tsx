@@ -6,8 +6,7 @@ import { CompanyForm, IcalLinks, MemberList, ProfileForm } from "@/components/se
 import { WorkHoursForm } from "@/components/settings/WorkHoursForm";
 import { InviteForm } from "@/components/invites/InviteForm";
 import { InvitationList } from "@/components/invites/InvitationList";
-import { requireMember } from "@/lib/auth";
-import { withUser } from "@/lib/db";
+import { requireMember, withMember } from "@/lib/auth";
 import { hasV2Schema, SCHEMA_PENDING_MESSAGE } from "@/lib/schema";
 import type { CompanyInvitation, Role, WorkHours } from "@/lib/database.types";
 import type { PatternDays } from "@/lib/schedule-resolver";
@@ -20,7 +19,7 @@ export default async function SettingsPage() {
   const isAdmin = ctx.profile.role === "admin";
   const v2 = await hasV2Schema();
   // Egyetlen adatbázis-kör
-  const data = await withUser(ctx.userId, (tx) =>
+  const data = await withMember(ctx, (tx) =>
     tx.one<{
       pattern: PatternDays | null;
       members: { id: string; full_name: string; email: string; role: Role }[];
@@ -30,8 +29,8 @@ export default async function SettingsPage() {
       `select
          (select json_build_object('mon', mon, 'tue', tue, 'wed', wed, 'thu', thu, 'fri', fri)
             from recurring_patterns where user_id = $1) as pattern,
-         coalesce((select json_agg(json_build_object('id', id, 'full_name', full_name, 'email', email, 'role', role))
-                     from profiles where $3 and company_id = $2), '[]') as members,
+         coalesce((select json_agg(json_build_object('id', p.id, 'full_name', p.full_name, 'email', p.email, 'role', m.role))
+                     from memberships m join profiles p on p.id = m.user_id where $3 and m.company_id = $2), '[]') as members,
          ${
            v2
              ? `coalesce((select json_agg(json_build_object('user_id', user_id, 'weekday', weekday, 'start_time', start_time,
@@ -53,7 +52,7 @@ export default async function SettingsPage() {
   const rawMembers = data?.members ?? [];
 
   const base = siteUrl();
-  const icalUrl = `${base}/api/ical/${ctx.profile.ical_token}/calendar.ics`;
+  const icalUrl = `${base}/api/ical/${ctx.profile.ical_token}/calendar.ics?c=${ctx.company.id}`;
   const collator = new Intl.Collator("hu");
   const members = [...rawMembers].sort((a, b) => collator.compare(a.full_name, b.full_name));
 
@@ -89,7 +88,7 @@ export default async function SettingsPage() {
         title="Naptár szinkronizáció"
         description="Élő naptár feed (.ics), amely automatikusan frissül a Google Naptárban, Apple Naptárban vagy Outlookban."
       >
-        <IcalLinks personalUrl={icalUrl} teamUrl={`${icalUrl}?team=1`} />
+        <IcalLinks personalUrl={icalUrl} teamUrl={`${icalUrl}&team=1`} />
         <div className="mt-6 grid gap-4 text-sm sm:grid-cols-3">
           <Guide title="Google Naptár">
             <li>Nyisd meg a calendar.google.com oldalt</li>

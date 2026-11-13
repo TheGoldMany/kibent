@@ -1,29 +1,44 @@
 import "server-only";
 import { withSystem } from "@/lib/db";
 import { AUTH_SCHEMA_SQL, AUTH_SCHEMA_VERSION } from "@/lib/auth/schema-sql";
+import { TEAMS_SCHEMA_SQL, TEAMS_SCHEMA_VERSION } from "@/lib/auth/teams-sql";
+
+/**
+ * Automatikus, idempotens sémalépések (sorrendben). Mindegyiket egy verziójelző
+ * (megjegyzés az objektumon) azonosít; ha már megvan, kihagyjuk.
+ */
+const STEPS = [
+  {
+    version: AUTH_SCHEMA_VERSION,
+    check: "select obj_description(to_regnamespace('better_auth'), 'pg_namespace') as v",
+    sql: AUTH_SCHEMA_SQL,
+  },
+  {
+    version: TEAMS_SCHEMA_VERSION,
+    check: "select obj_description(to_regclass('public.memberships'), 'pg_class') as v",
+    sql: TEAMS_SCHEMA_SQL,
+  },
+];
 
 let ready: Promise<void> | null = null;
 
-/**
- * A Better Auth séma (0004) automatikus létrehozása az első auth-hívás előtt.
- * Idempotens; példányonként egyszer fut, tanácsadó zárral, hogy párhuzamos
- * indulásnál se ütközzön.
- */
+/** Példányonként egyszer fut, tanácsadó zárral (párhuzamos indulásnál sem ütközik). */
 export function ensureAuthSchema(): Promise<void> {
   ready ??= (async () => {
     await withSystem(async (db) => {
-      const row = await db.one<{ v: string | null }>(
-        "select obj_description(to_regnamespace('better_auth'), 'pg_namespace') as v",
-      );
-      if (row?.v === AUTH_SCHEMA_VERSION) return;
-      await db.query("begin");
-      try {
-        await db.query("select pg_advisory_xact_lock(hashtextextended('kibent-auth-schema', 0))");
-        await db.query(AUTH_SCHEMA_SQL);
-        await db.query("commit");
-      } catch (error) {
-        await db.query("rollback").catch(() => undefined);
-        throw error;
+      for (const step of STEPS) {
+        const row = await db.one<{ v: string | null }>(step.check);
+        if (row?.v === step.version) continue;
+        await db.query("begin");
+        try {
+          await db.query("select pg_advisory_xact_lock(hashtextextended('kibent-schema', 0))");
+          const again = await db.one<{ v: string | null }>(step.check);
+          if (again?.v !== step.version) await db.query(step.sql);
+          await db.query("commit");
+        } catch (error) {
+          await db.query("rollback").catch(() => undefined);
+          throw error;
+        }
       }
     });
   })().catch((error) => {

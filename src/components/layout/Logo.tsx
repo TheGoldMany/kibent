@@ -8,11 +8,14 @@ export function Logo({
   href = "/",
   size = "md",
   variant = "light",
+  compact = false,
 }: {
   className?: string;
   href?: string;
   size?: "md" | "lg";
   variant?: "light" | "dark";
+  /** Keskeny képernyőn csak a jel látszik (zsúfolt fejléc). */
+  compact?: boolean;
 }) {
   return (
     <Link
@@ -29,6 +32,7 @@ export function Logo({
           "font-display font-bold italic tracking-tight",
           size === "lg" ? "text-[2.1rem]" : "text-[1.7rem]",
           variant === "dark" ? "text-cotton" : "text-ink",
+          compact && "hidden md:inline",
         )}
       >
         Kibent

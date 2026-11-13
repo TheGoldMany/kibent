@@ -22,14 +22,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!parsed.success) return new NextResponse("Not found", { status: 404 });
 
   const includeTeam = request.nextUrl.searchParams.get("team") === "1";
+  // Melyik csapat naptára (?c=<csapat>); régi linkeknél a felhasználó első csapata.
+  const wantedTeam = uuidSchema.safeParse(request.nextUrl.searchParams.get("c"));
+  const teamId = wantedTeam.success ? wantedTeam.data : null;
   const { start, end, days } = feedRange(todayISO());
 
   const data = await withSystem(async (db) => {
     const owner = await db.one<Owner>(
-      `select p.id, p.full_name, p.company_id, c.name as company_name
-         from profiles p left join companies c on c.id = p.company_id
-        where p.ical_token = $1`,
-      [parsed.data],
+      `select p.id, p.full_name, m.company_id, c.name as company_name
+         from profiles p
+         join memberships m on m.user_id = p.id and ($2::uuid is null or m.company_id = $2::uuid)
+         join companies c on c.id = m.company_id
+        where p.ical_token = $1
+        order by m.created_at
+        limit 1`,
+      [parsed.data, teamId],
     );
     if (!owner?.company_id) return null;
 
@@ -38,7 +45,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const members = includeTeam
       ? await db.query<{ id: string; full_name: string }>(
-          "select id, full_name from profiles where company_id = $1",
+          "select p.id, p.full_name from memberships m join profiles p on p.id = m.user_id where m.company_id = $1",
           [owner.company_id],
         )
       : [{ id: owner.id, full_name: owner.full_name }];

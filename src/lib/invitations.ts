@@ -32,7 +32,7 @@ export async function getInvitePreview(token: string): Promise<InvitePreview | n
       `select i.email, i.company_id, c.name as company_name,
               (i.accepted_at is null and i.expires_at < now()) as expired,
               (i.accepted_at is not null) as accepted,
-              exists (select 1 from profiles p where lower(p.email) = i.email) as has_account
+              exists (select 1 from better_auth."user" u where lower(u.email) = i.email) as has_account
          from company_invitations i
          join companies c on c.id = i.company_id
         where i.token = $1`,

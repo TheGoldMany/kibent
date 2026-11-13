@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireAdmin, requireMember } from "@/lib/auth";
+import { requireAdmin, requireMember, withMember } from "@/lib/auth";
 import { getAuth } from "@/lib/auth/server";
-import { dbErrorMessage, withUser } from "@/lib/db";
+import { dbErrorMessage } from "@/lib/db";
 import { isEmailConfigured, sendInvitationEmail } from "@/lib/email";
 import { hasV2Schema, SCHEMA_PENDING_MESSAGE } from "@/lib/schema";
 import { siteUrl } from "@/lib/utils";
@@ -23,9 +23,9 @@ import type { FormState } from "@/components/ui/form-message";
 
 type Result = { ok: true } | { ok: false; error: string };
 
-async function run(userId: string, sql: string, params: unknown[]): Promise<Result> {
+async function run(ctx: { userId: string; company: { id: string } | null }, sql: string, params: unknown[]): Promise<Result> {
   try {
-    await withUser(userId, (tx) => tx.query(sql, params));
+    await withMember(ctx, (tx) => tx.query(sql, params));
     return { ok: true };
   } catch (error) {
     return { ok: false, error: dbErrorMessage(error) };
@@ -37,7 +37,7 @@ export async function updateProfileAction(_prev: FormState, formData: FormData):
   if (!parsed.success) return { error: firstError(parsed.error) };
 
   const ctx = await requireMember();
-  const res = await run(ctx.userId, "update profiles set full_name = $1 where id = $2", [parsed.data.fullName, ctx.userId]);
+  const res = await run(ctx, "update profiles set full_name = $1 where id = $2", [parsed.data.fullName, ctx.userId]);
   if (!res.ok) return { error: res.error };
   // A Neon Auth felhasználói nevét is frissítjük (nem kritikus, ha nem sikerül).
   await getAuth()
@@ -50,7 +50,7 @@ export async function updateProfileAction(_prev: FormState, formData: FormData):
 
 export async function regenerateIcalTokenAction(): Promise<Result> {
   const ctx = await requireMember();
-  const res = await run(ctx.userId, "select public.regenerate_ical_token()", []);
+  const res = await run(ctx, "select public.regenerate_ical_token()", []);
   if (res.ok) revalidatePath("/settings");
   return res;
 }
@@ -60,7 +60,7 @@ export async function updateCompanyNameAction(_prev: FormState, formData: FormDa
   if (!parsed.success) return { error: firstError(parsed.error) };
 
   const ctx = await requireAdmin();
-  const res = await run(ctx.userId, "update companies set name = $1 where id = $2", [parsed.data.name, ctx.company.id]);
+  const res = await run(ctx, "update companies set name = $1 where id = $2", [parsed.data.name, ctx.company.id]);
   if (!res.ok) return { error: res.error };
 
   revalidatePath("/", "layout");
@@ -72,7 +72,7 @@ export async function setMemberRoleAction(userId: string, role: Role): Promise<R
   if (!parsed.success || (role !== "admin" && role !== "member")) return { ok: false, error: "Érvénytelen adatok." };
 
   const ctx = await requireAdmin();
-  const res = await run(ctx.userId, "select public.set_member_role($1, $2)", [parsed.data, role]);
+  const res = await run(ctx, "select public.set_member_role($1, $2)", [parsed.data, role]);
   if (res.ok) revalidatePath("/", "layout");
   return res;
 }
@@ -82,7 +82,7 @@ export async function removeMemberAction(userId: string): Promise<Result> {
   if (!parsed.success) return { ok: false, error: "Érvénytelen azonosító." };
 
   const ctx = await requireAdmin();
-  const res = await run(ctx.userId, "select public.remove_member($1)", [parsed.data]);
+  const res = await run(ctx, "select public.remove_member($1)", [parsed.data]);
   if (res.ok) revalidatePath("/", "layout");
   return res;
 }
@@ -103,8 +103,8 @@ export async function saveWorkHoursAction(_prev: FormState, formData: FormData):
   if (!checked.ok) return { error: checked.error };
 
   try {
-    await withUser(ctx.userId, async (tx) => {
-      await tx.query("delete from work_hours where user_id = $1", [ctx.userId]);
+    await withMember(ctx, async (tx) => {
+      await tx.query("delete from work_hours where user_id = $1 and company_id = $2", [ctx.userId, ctx.company.id]);
       if (checked.rows.length > 0) {
         await tx.query(
           `insert into work_hours (user_id, company_id, weekday, start_time, end_time, lunch_start)
@@ -135,7 +135,7 @@ export async function updateLunchMinutesAction(_prev: FormState, formData: FormD
 
   const ctx = await requireAdmin();
   if (!(await hasV2Schema())) return { error: SCHEMA_PENDING_MESSAGE };
-  const res = await run(ctx.userId, "update companies set lunch_minutes = $1 where id = $2", [
+  const res = await run(ctx, "update companies set lunch_minutes = $1 where id = $2", [
     parsed.data.minutes,
     ctx.company.id,
   ]);
@@ -173,9 +173,9 @@ export async function sendInvitationsAction(_prev: InviteState, formData: FormDa
   if (!(await hasV2Schema())) return { error: SCHEMA_PENDING_MESSAGE };
   let created: { email: string; token: string; member: boolean }[];
   try {
-    created = await withUser(ctx.userId, async (tx) => {
+    created = await withMember(ctx, async (tx) => {
       const members = await tx.query<{ email: string }>(
-        "select lower(email) as email from profiles where company_id = $1 and lower(email) = any($2::text[])",
+        "select lower(p.email) as email from memberships m join profiles p on p.id = m.user_id where m.company_id = $1 and lower(p.email) = any($2::text[])",
         [ctx.company.id, emails],
       );
       const memberSet = new Set(members.map((m) => m.email));
@@ -235,7 +235,7 @@ export async function resendInvitationAction(id: string): Promise<{ ok: boolean;
   const ctx = await requireAdmin();
   let row: { email: string; token: string } | null;
   try {
-    row = await withUser(ctx.userId, (tx) =>
+    row = await withMember(ctx, (tx) =>
       tx.one<{ email: string; token: string }>(
         `update company_invitations set expires_at = now() + make_interval(days => $2)
           where id = $1 and accepted_at is null
@@ -266,7 +266,7 @@ export async function revokeInvitationAction(id: string): Promise<Result> {
   const parsed = uuidSchema.safeParse(id);
   if (!parsed.success) return { ok: false, error: "Érvénytelen azonosító." };
   const ctx = await requireAdmin();
-  const res = await run(ctx.userId, "delete from company_invitations where id = $1 and accepted_at is null", [parsed.data]);
+  const res = await run(ctx, "delete from company_invitations where id = $1 and accepted_at is null", [parsed.data]);
   if (res.ok) revalidatePath("/settings");
   return res;
 }
