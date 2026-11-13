@@ -274,7 +274,15 @@ run("integráció (helyi Postgres)", () => {
     const RequestsPage = (await import("@/app/(dashboard)/requests/page")).default;
     const SettingsPage = (await import("@/app/(dashboard)/settings/page")).default;
     as(DANI);
-    await expect(DashboardPage({ searchParams: Promise.resolve({ view: "month", date: "2026-12-01" }) })).resolves.toBeTruthy();
+    const dash = await DashboardPage({ searchParams: Promise.resolve({ view: "month", date: "2026-12-01" }) });
+    // Adatvédelem: Béla szabadságának megjegyzése („Karácsony”) nem jut el egy másik taghoz
+    const seen = new WeakSet();
+    const payload = JSON.stringify(dash, (_k, v) => {
+      if (typeof v === "object" && v !== null) { if (seen.has(v)) return undefined; seen.add(v); }
+      return typeof v === "function" ? undefined : v;
+    });
+    expect(payload).toContain("2026-12-18");
+    expect(payload).not.toContain("Karácsony");
     await expect(RequestsPage()).resolves.toBeTruthy();
     await expect(SettingsPage()).resolves.toBeTruthy();
     as(ANNA);

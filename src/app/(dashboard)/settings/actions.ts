@@ -202,26 +202,21 @@ export async function sendInvitationsAction(_prev: InviteState, formData: FormDa
     return { error: dbErrorMessage(error) };
   }
 
-  const results: InviteResult[] = [];
-  for (const c of created) {
-    if (c.member) {
-      results.push({ email: c.email, status: "member" });
-      continue;
-    }
-    const url = inviteUrl(c.token);
-    const mail = await sendInvitationEmail({
-      to: c.email,
-      companyName: ctx.company.name,
-      inviterName: ctx.profile.full_name,
-      url,
-      expiresInDays: INVITE_VALID_DAYS,
-    });
-    results.push({
-      email: c.email,
-      status: mail.sent ? "sent" : mail.reason === "not_configured" ? "link" : "failed",
-      url,
-    });
-  }
+  // Az emailek párhuzamosan mennek ki
+  const results: InviteResult[] = await Promise.all(
+    created.map(async (c): Promise<InviteResult> => {
+      if (c.member) return { email: c.email, status: "member" };
+      const url = inviteUrl(c.token);
+      const mail = await sendInvitationEmail({
+        to: c.email,
+        companyName: ctx.company.name,
+        inviterName: ctx.profile.full_name,
+        url,
+        expiresInDays: INVITE_VALID_DAYS,
+      });
+      return { email: c.email, status: mail.sent ? "sent" : mail.reason === "not_configured" ? "link" : "failed", url };
+    }),
+  );
 
   revalidatePath("/settings");
   const sent = results.filter((r) => r.status === "sent").length;

@@ -6,6 +6,7 @@ import { getAuth } from "@/lib/auth/server";
 import { getSessionContext, safeNext } from "@/lib/auth";
 import { dbErrorMessage, withUser } from "@/lib/db";
 import { z } from "zod";
+import { allowCodeEmail, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { siteUrl } from "@/lib/utils";
 import {
   companyNameSchema,
@@ -71,13 +72,11 @@ export async function signInAction(_prev: AuthState, formData: FormData): Promis
 
   const { error } = await getAuth().signIn.email(parsed.data);
   if (error) {
-    // Megerősítetlen email: küldünk egy friss kódot, és a kódos lépésre váltunk.
+    // Megerősítetlen email: a kódos lépésre váltunk. Nem küldünk automatikusan új kódot,
+    // mert az érvényteleníthetné a már kiküldöttet – a felhasználó kérhet újat.
     if (/email not (confirmed|verified)/i.test(error.message ?? "")) {
-      await getAuth()
-        .emailOtp.sendVerificationOtp({ email: parsed.data.email, type: "email-verification" })
-        .catch(() => undefined);
       return {
-        error: "Az email címed még nincs megerősítve. Küldtünk egy új kódot, írd be lent.",
+        error: "Az email címed még nincs megerősítve. Írd be a kapott kódot, vagy kérj újat.",
         verifyEmail: parsed.data.email,
       };
     }
@@ -131,6 +130,7 @@ export async function resendCodeAction(
 ): Promise<{ ok: boolean; message: string }> {
   const parsed = magicLinkSchema.safeParse({ email });
   if (!parsed.success) return { ok: false, message: firstError(parsed.error) };
+  if (!(await allowCodeEmail(parsed.data.email))) return { ok: false, message: RATE_LIMIT_MESSAGE };
   const { error } = await getAuth().emailOtp.sendVerificationOtp({ email: parsed.data.email, type: purpose });
   if (error) return { ok: false, message: authErrorHu(error.message) };
   return { ok: true, message: "Új kódot küldtünk. Nézd meg a postafiókod (a spam mappát is)." };
@@ -140,6 +140,7 @@ export async function resendCodeAction(
 export async function sendSignInCodeAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
   const parsed = magicLinkSchema.safeParse({ email: formData.get("email") });
   if (!parsed.success) return { error: firstError(parsed.error) };
+  if (!(await allowCodeEmail(parsed.data.email))) return { error: RATE_LIMIT_MESSAGE };
 
   const { error } = await getAuth().emailOtp.sendVerificationOtp({ email: parsed.data.email, type: "sign-in" });
   if (error) return { error: authErrorHu(error.message) };

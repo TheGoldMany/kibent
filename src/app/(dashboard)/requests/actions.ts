@@ -36,21 +36,35 @@ async function uploadMedicalDoc(ctx: MemberContext, groupId: string, file: File)
   // Útvonal: {company_id}/{user_id}/{request_group_id}/{uuid}-{fájlnév}
   const path = `${ctx.company.id}/${ctx.userId}/${groupId}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
 
-  // Előbb a metaadat (RLS ellenőrzi: saját betegszabadság), csak utána a fájl.
+  // 1. Jogosultság: csak saját betegszabadsághoz (rövid tranzakció, mielőtt bármit feltöltünk)
+  const owns = await withUser(ctx.userId, (tx) =>
+    tx.one<{ ok: boolean }>(
+      "select exists (select 1 from schedules where user_id = $1 and request_group_id = $2 and status = 'sick') as ok",
+      [ctx.userId, groupId],
+    ),
+  );
+  if (!owns?.ok) return "Igazolás csak saját betegszabadsághoz tölthető fel.";
+
+  // 2. Feltöltés tranzakción kívül (nem foglal adatbázis-kapcsolatot a hálózati átvitel alatt)
   try {
-    await withUser(ctx.userId, async (tx) => {
-      await tx.query(
+    await uploadPrivate(path, file);
+  } catch (error) {
+    console.error("[blob] upload", error);
+    return "A fájl feltöltése nem sikerült. Próbáld újra később.";
+  }
+
+  // 3. Metaadat; ha ez elbukik, a fájlt töröljük, hogy ne maradjon gazdátlan
+  try {
+    await withUser(ctx.userId, (tx) =>
+      tx.query(
         `insert into medical_documents (company_id, user_id, request_group_id, storage_path, file_name, mime_type)
          values ($1, $2, $3, $4, $5, $6)`,
         [ctx.company.id, ctx.userId, groupId, path, file.name.slice(0, 200), file.type],
-      );
-      // Ha a feltöltés elbukik, a kivétel visszagörgeti a metaadatot is.
-      await uploadPrivate(path, file);
-    });
+      ),
+    );
   } catch (error) {
-    if ((error as { code?: string })?.code) return dbErrorMessage(error);
-    console.error("[blob] upload", error);
-    return "A fájl feltöltése nem sikerült. Próbáld újra később.";
+    await deletePrivate([path]).catch(() => undefined);
+    return dbErrorMessage(error);
   }
   return null;
 }
@@ -82,6 +96,8 @@ export async function createLeaveRequestAction(_prev: FormState, formData: FormD
   let conflict: string | null = null;
   try {
     await withUser(ctx.userId, async (tx) => {
+      // Felhasználónkénti zár: két párhuzamos kérelem ne írja felül egymást
+      await tx.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [ctx.userId]);
       // Ütközés meglévő (nem elutasított) szabadsággal / betegszabadsággal
       const hit = await tx.one<{ date: string }>(
         `select date from schedules

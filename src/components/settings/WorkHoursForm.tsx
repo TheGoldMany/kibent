@@ -6,40 +6,27 @@ import { saveWorkHoursAction } from "@/app/(dashboard)/settings/actions";
 import { FormMessage } from "@/components/ui/form-message";
 import { SubmitButton } from "@/components/ui/submit-button";
 import type { WorkHours } from "@/lib/database.types";
-import { formatTime, minutesToTime, timeToMinutes } from "@/lib/validations";
+import { Input } from "@/components/ui/input";
+import { formatTime, minutesToTime, timeToMinutes, toTimeInput, WEEKDAY_LABELS } from "@/lib/validations";
 import { cn } from "@/lib/utils";
 
-const DAYS = [
-  { weekday: 1, label: "Hétfő" },
-  { weekday: 2, label: "Kedd" },
-  { weekday: 3, label: "Szerda" },
-  { weekday: 4, label: "Csütörtök" },
-  { weekday: 5, label: "Péntek" },
-] as const;
+const DAYS = ([1, 2, 3, 4, 5] as const).map((weekday) => ({ weekday, label: WEEKDAY_LABELS[weekday] }));
 
 type Row = { enabled: boolean; start: string; end: string; lunch: string };
-
-/** „9:00” → „09:00” a <input type="time"> számára. */
-function toInput(value: string | null | undefined): string {
-  const m = value ? timeToMinutes(value) : null;
-  if (m === null) return "";
-  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-}
 
 export function WorkHoursForm({ initial, lunchMinutes }: { initial: WorkHours[]; lunchMinutes: number }) {
   const [state, action] = useActionState(saveWorkHoursAction, null);
   const [rows, setRows] = useState<Record<number, Row>>(() => {
     const byDay = new Map(initial.map((w) => [w.weekday as number, w]));
-    const empty = initial.length === 0;
     return Object.fromEntries(
       DAYS.map(({ weekday }) => {
         const w = byDay.get(weekday);
         return [
           weekday,
           w
-            ? { enabled: true, start: toInput(w.start_time), end: toInput(w.end_time), lunch: toInput(w.lunch_start) }
-            : // Első beállításnál kényelmes alapértelmezés
-              { enabled: empty, start: "09:00", end: "17:00", lunch: "12:00" },
+            ? { enabled: true, start: toTimeInput(w.start_time), end: toTimeInput(w.end_time), lunch: toTimeInput(w.lunch_start) }
+            : // Nincs mentett munkaidő erre a napra: kikapcsolva, de előre kitöltött idővel
+              { enabled: false, start: "09:00", end: "17:00", lunch: "12:00" },
         ];
       }),
     );
@@ -153,14 +140,14 @@ function TimeField({
   return (
     <label className="block space-y-1 text-sm font-semibold">
       <span>{label}</span>
-      <input
+      <Input
         type="time"
         name={name}
         value={value}
         required={required}
         step={300}
         onChange={(e) => onChange(e.target.value)}
-        className="flex h-11 w-full rounded-lg border-2 border-ink bg-white px-3 text-[15px] font-normal tabular-nums focus-visible:shadow-brutal-sm focus-visible:outline-none"
+        className="font-normal tabular-nums"
       />
     </label>
   );

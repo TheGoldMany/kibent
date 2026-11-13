@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useOptimistic, useState, useTransition } from "react";
+import { useEffect, useMemo, useOptimistic, useState, useTransition } from "react";
 import { AlertCircle, Building2, Users, UtensilsCrossed, X } from "lucide-react";
 import { setDayStatusAction } from "@/app/(dashboard)/actions";
 import { DayCell } from "@/components/calendar/DayCell";
@@ -12,7 +12,7 @@ import {
   type PatternDays,
   type ScheduleLike,
 } from "@/lib/schedule-resolver";
-import { dayPhraseHu, formatHu, isWeekendISO } from "@/lib/dates";
+import { dayPhraseHu, formatHu, isWeekendISO, nowMinutesBudapest, todayISO } from "@/lib/dates";
 import type { Role, WorkHours, WorkStatus } from "@/lib/database.types";
 import { formatTime, minutesToTime, timeToMinutes } from "@/lib/validations";
 import { cn, initials } from "@/lib/utils";
@@ -83,6 +83,14 @@ export function TeamMatrix({
 
   const compact = days.length > 14;
 
+  // Az „Ebédel” jelzés percenként frissül a kliensen (a szerver időpontjával indul).
+  const [clock, setClock] = useState(nowMinutes);
+  useEffect(() => {
+    if (nowMinutes === undefined) return;
+    const id = setInterval(() => setClock(todayISO() === today ? nowMinutesBudapest() : undefined), 60_000);
+    return () => clearInterval(id);
+  }, [nowMinutes, today]);
+
   // Munkaidők: felhasználó -> hétköznap (1–5) -> idősáv
   const hoursIndex = useMemo(() => {
     const idx = new Map<string, Map<number, WorkHours>>();
@@ -106,10 +114,10 @@ export function TeamMatrix({
           : null,
       lunchNow:
         day === today &&
-        nowMinutes !== undefined &&
+        clock !== undefined &&
         lunchStart !== null &&
-        nowMinutes >= lunchStart &&
-        nowMinutes < lunchStart + lunchMinutes,
+        clock >= lunchStart &&
+        clock < lunchStart + lunchMinutes,
     };
   }
   const best = bestOfficeDay(matrix, days, today);

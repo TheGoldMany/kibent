@@ -272,5 +272,20 @@ select pg_temp.expect_eq((select (public.accept_pending_invitation() is null)::i
 reset role;
 select pg_temp.expect_eq((select count(*) from public.company_invitations where email = 'bela@acme.hu' and accepted_by is not null), 1, 'meghívó elfogadottnak jelölve');
 
+-- ---------------------------------------------------------------- 0003: megerősítések
+set role kibent_app;
+set app.user_id = '00000000-0000-0000-0000-00000000000b';
+insert into public.schedules (company_id, user_id, date, status, request_group_id)
+  values ((select acme_id from t_ctx2), app.uid(), '2026-12-01', 'sick', '33333333-3333-3333-3333-333333333333');
+set app.user_id = '00000000-0000-0000-0000-00000000000d';
+select pg_temp.expect_fail(
+  $$update public.schedules set approval_status = 'rejected' where request_group_id = '33333333-3333-3333-3333-333333333333'$$,
+  'admin nem utasíthat el betegszabadságot');
+select pg_temp.expect_fail($$select public.rate_limit_hit('x', 1, 60)$$, 'kibent_app nem hívhatja a korlátozót');
+reset role;
+select pg_temp.expect_eq((select (public.rate_limit_hit('teszt', 2, 60))::int)::bigint, 1, 'korlátozó: 1. kérés átmegy');
+select pg_temp.expect_eq((select (public.rate_limit_hit('teszt', 2, 60))::int)::bigint, 1, 'korlátozó: 2. kérés átmegy');
+select pg_temp.expect_eq((select (public.rate_limit_hit('teszt', 2, 60))::int)::bigint, 0, 'korlátozó: 3. kérés tiltva');
+
 reset role;
 \echo 'MINDEN RLS TESZT SIKERES'

@@ -134,6 +134,13 @@ export function minutesToTime(total: number): string {
 }
 
 /** „09:00:00” → „9:00”. */
+/** „9:00” / „09:00:00” → „09:00” a <input type="time"> számára. */
+export function toTimeInput(value: string | null | undefined): string {
+  const m = value ? timeToMinutes(value) : null;
+  if (m === null) return "";
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
 export function formatTime(value: string | null | undefined): string {
   if (!value) return "";
   const m = timeToMinutes(value);
@@ -149,7 +156,8 @@ export const lunchMinutesSchema = z.object({
     .refine((v) => (LUNCH_MINUTE_OPTIONS as readonly number[]).includes(v), "Válassz a megadott hosszak közül."),
 });
 
-const DAY_LABELS = ["", "Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek"];
+/** Hétköznapok neve (index = weekday, 1 = hétfő). */
+export const WEEKDAY_LABELS = ["", "Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek"] as const;
 
 export type WorkDayInput = { weekday: number; enabled: boolean; start: string; end: string; lunch: string };
 
@@ -164,7 +172,7 @@ export function validateWorkWeek(
   const rows: { weekday: number; start: string; end: string; lunch: string | null }[] = [];
   for (const d of days) {
     if (!d.enabled) continue;
-    const label = DAY_LABELS[d.weekday] ?? "Nap";
+    const label = WEEKDAY_LABELS[d.weekday] ?? "Nap";
     const start = timeToMinutes(d.start);
     const end = timeToMinutes(d.end);
     if (start === null || end === null) return { ok: false, error: `${label}: add meg a munkaidő kezdetét és végét.` };

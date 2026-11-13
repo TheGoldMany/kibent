@@ -43,7 +43,9 @@ export default async function DashboardPage({
                      from recurring_patterns where company_id = $1), '[]') as patterns,
          coalesce((select json_agg(json_build_object('user_id', user_id, 'date', date, 'status', status,
                                                      'approval_status', approval_status,
-                                                     'request_group_id', request_group_id, 'note', note))
+                                                     'request_group_id', request_group_id,
+                                                     -- megjegyzés csak a sajátnál és adminnak (adatvédelem)
+                                                     'note', case when user_id = $4 or $5 then note end))
                      from schedules where company_id = $1 and date between $2 and $3), '[]') as schedules,
          ${
            v2
@@ -52,7 +54,7 @@ export default async function DashboardPage({
                      from work_hours where company_id = $1), '[]')`
              : "'[]'::json"
          } as work_hours`,
-      [ctx.company.id, start, end],
+      [ctx.company.id, start, end, ctx.userId, ctx.profile.role === "admin"],
     ),
   );
   const rawMembers = data?.members ?? [];
