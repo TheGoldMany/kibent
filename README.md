@@ -65,7 +65,7 @@ cp .env.example .env.local
 | `NEON_AUTH_COOKIE_SECRET` | min. 32 karakteres titok: `openssl rand -base64 32` |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob store tokenje |
 | `RESEND_API_KEY` | Resend API kulcs a meghívó emailekhez (opcionális – nélküle a link kézzel másolható) |
-| `EMAIL_FROM` | feladó, pl. `Kibent <meghivo@lundasoftware.hu>` (a domaint a Resendben hitelesíteni kell) |
+| `EMAIL_FROM` | feladó, pl. `Kibent <meghivo@kibent.hu>` (a domaint a Resendben hitelesíteni kell) |
 | `NEXT_PUBLIC_SITE_URL` | az alkalmazás nyilvános URL-je (meghívó, naptár linkek, auth visszairányítás) |
 
 ### 4. Futtatás

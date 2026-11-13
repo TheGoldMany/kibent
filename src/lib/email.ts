@@ -2,7 +2,7 @@ import "server-only";
 
 /**
  * Tranzakciós email küldése a Resend API-val (https://resend.com).
- * Beállítás: RESEND_API_KEY és EMAIL_FROM (pl. „Kibent <meghivo@lundasoftware.hu>”,
+ * Beállítás: RESEND_API_KEY és EMAIL_FROM (pl. „Kibent <meghivo@kibent.hu>”,
  * a feladó domainjét a Resendben hitelesíteni kell).
  * Ha nincs beállítva, nem küld semmit – a meghívó link ilyenkor kézzel másolható.
  */
